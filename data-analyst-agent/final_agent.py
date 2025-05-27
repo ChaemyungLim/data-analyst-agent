@@ -11,6 +11,18 @@ os.chdir(os.path.dirname(__file__))
 
 load_dotenv()
 
+def read_file(path: str) -> Optional[str]:
+    try:
+        with open(path, 'r', encoding='utf-8') as file:
+            content: str = file.read()
+        return content
+    except FileNotFoundError:
+        print(f"File not found: {path}")
+        return None
+    except Exception as e:
+        print(f"Error reading file: {e}")
+        return None
+
 def generate(prompt: str) -> Optional[str]:
     try:
         print("Generating response from OpenAI")
@@ -37,7 +49,7 @@ class Agent:
         self.template_column_desc_human = self.load_template(prompt_template_path_column_desc_human)
     
     def load_template(self, prompt_template_path) -> str:
-        return read_file(prompt_template_path) # read file 함수 만들기
+        return read_file(prompt_template_path)
 
     def choose_task():
         # 사용자의 입력을 받아 어떤 task, 어떤 table? 분석 할지 고르는 기능
@@ -123,3 +135,4 @@ if __name__ == "__main__":
         configs = yaml.safe_load(f)
     config = dict2namespace(configs)
 
+    run_agent(config,INPUT_DIR,OUTPUT_DIR,CONFIG_PATH)
