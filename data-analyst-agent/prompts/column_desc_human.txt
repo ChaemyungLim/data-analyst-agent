@@ -1,0 +1,4 @@
+[Table Name]: {table_name}
+
+[Column Summary Information]:
+{column_summary}
