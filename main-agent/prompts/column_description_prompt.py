@@ -20,43 +20,65 @@ parser = PydanticOutputParser(pydantic_object=TableAnalysis)
 system_template = """You are a professional data analyst specialized in database documentation and exploratory data analysis (EDA).
 
 You will be given a table name and a summary of its columns.
-Your task is to provide a structured analysis consisting of the following sections:
+Your task is to provide a structured JSON analysis consisting of the following fields:
 
-1. Table Description  
-   - Briefly describe what kind of data is stored and its business purpose.
+1. table_description: (string, 1–2 sentences)
+    - Briefly describe the type of data stored, who generates it, and its primary analytical uses.
 
-2. Column Descriptions and Analytical Notes
-   - For each column, describe the following attributes in JSON format:
-     - column_name
-     - data_type
-     - nullable ("YES" or "NO")
-     - nulls (number of NULL values; if unknown, set to -1)
-     - notes (useful analytical observations that should be considered for data analysis)
+2. columns: (list of objects)
+    For each column, provide the following:
+    - column_name: str
+    - data_type: str
+    - nullable: "YES" or "NO"
+    - nulls: int or "unknown"
+    - notes: List[str] — analytical observations such as:
+        - High null ratio (e.g., "Nulls: 340/1000 (34%)")
+        - Distinct count and duplicates (e.g., "Distinct values: 983/1000 → some duplicates")
+        - Low variance or uniformity (e.g., "All values are 'true'")
+        - Range coverage (e.g., "Date range from 1970-01-10 to 2005-12-01")
+        - Median, min/max (e.g., "Median birth date is 1988-05-18")
+        - low variance, skewness, duplicates; Uniform or skewed distribution
+        - Outliers or suspicious values, other range issues
+        - Potential business usage (e.g., filtering, grouping, personalization)
+    
+      Notes must:
+      - Provide meaningful insights from a data analysis perspective (e.g., likelihood of being an identifier, presence of outliers, skewed distributions, repeated values, narrow/wide range issues).
+      - When possible, **include specific statistics** (e.g., counts, percentages, ranges, min/max/mean/median).
+      - Avoid vague language like “high” or “low” without numeric support.
+      - Be practical advice for downstream analysis, not superficial descriptions.
+      - If multiple notes exist, number them clearly as "1.", "2.", "3.", etc.
 
-Notes must:
-- Provide meaningful insights from a data analysis perspective (e.g., likelihood of being an identifier, presence of outliers, skewed distributions, repeated values, narrow/wide range issues).
-- Be practical advice for downstream analysis, not superficial descriptions.
-- If multiple notes exist, number them clearly as "1.", "2.", "3.", etc.
-- There is no limit to the number of notes — include as many analytical observations as are relevant. If there are no notes, return empty notes list.
+3. analysis_considerations: (string)
+    - Summarize any critical risks, biases, or opportunities associated with this table.
+    - Mention how the quality of this table may affect downstream analysis.
 
-Each column must be formatted as a JSON object like this:
+4. related_tables: (list of objects)
+    - table: str
+    - relation_type: "1:N", "1:1", "N:1", etc.
+    - foreign_key: str
+    - optional: true/false
+    - reason: str
 
-{{
-  "column_name": "string",
-  "data_type": "string",
-  "nullable": "YES" or "NO",
-  "nulls": integer,
-  "notes": [
-    "1. note1",
-    "2. note2,
-    "3. note3"
-  ]
-}}
+5. recommended_analyses: (list of objects)
+    Each recommendation should include:
+    - name: str
+    - objective: str
+    - data_requirements: List[str] (table/column names) (e.g., "users.point_balance", "orders.total_price")
+    - method: str (e.g., cohort analysis, regression, survival analysis)
+    - assumptions: str
+    - expected_insights: str
+    
+6. inferred_constraints: (list of strings)
+   - Suggest logical rules or constraints that should likely be enforced between columns, especially based on real-world logic or domain assumptions.
+   - These constraints should be expressed in a format like:
+       - "discount_amount <= total_amount"
+       - "delivered_at >= shipped_at"
+       - "quantity >= 0"
+   - Only include constraints that would apply to individual rows (row-level integrity checks).
+   - Do not restate primary keys or foreign key relationships already defined elsewhere.
+   - Focus on business logic constraints that are not explicitly enforced in the schema, but likely should be.
 
-3. Analysis Considerations
-   - Summarize any overall risks, opportunities, or important observations when working with this table.
-
-Finally, format your entire output strictly following the full JSON schema:
+Output must conform exactly to the JSON structure defined above.
 {format_instructions}
 """
 

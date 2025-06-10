@@ -1,196 +1,203 @@
-import sys
-import os
-import yaml
-import argparse
-import json
+import sys, os, yaml, argparse, datetime, traceback
 from dotenv import load_dotenv
 from openai import OpenAI
+from langchain_openai import ChatOpenAI
+from langchain.memory import ConversationBufferMemory, ConversationSummaryBufferMemory
+from langchain_core.messages import BaseMessage, AIMessage, HumanMessage
+from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
+from langchain_core.runnables import RunnableLambda, RunnableMap
 
 from agents.describle_table import generate_description_graph
 from agents.recommend_table import generate_table_recommendation_graph
+# from agents.text2sql import generate_text2sql_graph  # task 4 placeholder
 from prettify import print_final_output_task2, print_final_output_task3
 
-# env 파일 사용 위해 임시로 Chaemyung 디렉토리 경로 설정
+# setup env
 sys.path.append(os.path.dirname(__file__))
 os.chdir(os.path.dirname(__file__))
-
-
 load_dotenv()
 client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 
 class Tee:
-    def __init__(self, *streams):
+    def __init__(self, *streams): 
         self.streams = streams
+    def write(self, data): 
+        [s.write(data) or s.flush() for s in self.streams]
+    def flush(self): 
+        [s.flush() for s in self.streams]
 
-    def write(self, data):
-        for s in self.streams:
-            s.write(data)
-            s.flush()
-
-    def flush(self):
-        for s in self.streams:
-            s.flush()
-
-def read_file(path: str) :
+def read_file(path):
     try:
-        with open(path, 'r', encoding='utf-8') as file:
-            content: str = file.read()
-        return content
-    except FileNotFoundError:
-        print(f"File not found: {path}")
-        return None
+        with open(path, 'r', encoding='utf-8') as f: 
+            return f.read()
     except Exception as e:
-        print(f"Error reading file: {e}")
-        return None
-
-def generate(prompt: str):
-    try:
-        print("Generating response from OpenAI")
-        response = client.chat.completions.create(
-            model="gpt-4o-mini", # 변경 ?
-            messages=[
-                {"role": "system", "content": "You are a helpful assistant."},
-                {"role": "user", "content": prompt}
-            ],
-            temperature=0.7,
-            max_tokens=512
-        )
-        return response.choices[0].message.content
-    except Exception as e:
-        print(f"OpenAI API Error: {e}")
+        print(f"Error reading {path}: {e}")
         return None
 
 class Agent:
-    def __init__(self, config, user_input, prompt_template_A, prompt_template_path_column_desc_system, prompt_template_path_column_desc_human):
+    def __init__(self, config, prompt_routing_path):
         self.config = config
+        self.routing_template = read_file(prompt_routing_path)
+        self.followup_count = 0
+        self.followup_max = 2  # 최대 2번만 followup 허용
+        
+        self.llm = ChatOpenAI(model_name="gpt-4o-mini", temperature=0.7)
+        self.memory = ConversationBufferMemory(
+             return_messages=True
+        )
+        
+        # Initialize the routing chain
+        self.routing_chain = (
+            RunnableMap({
+                "history": RunnableLambda(lambda x: self.memory.load_memory_variables({})["history"]),
+                "user_input": lambda x: x["user_input"]
+            })
+            | ChatPromptTemplate.from_messages([
+                ("system", "You are a helpful assistant."),
+                MessagesPlaceholder(variable_name="history"),
+                ("human", "{user_input}")
+            ])
+            | self.llm
+        )
+        
+    def route_task(self, user_input: str, add_to_memory=True) -> tuple[str, str]:
+        # accept file input
+        if user_input.strip().endswith((".pdf", ".docx", ".pptx")):
+            return "recommend", user_input.strip()  # 바로 recommend로 넘김
+        
+        if not self.routing_template:
+            print("⚠️ No routing prompt template found.")
+            return "clarify", user_input
 
-        self.template_A = self.load_template(prompt_template_A)
-        self.template_column_desc_system = self.load_template(prompt_template_path_column_desc_system)
-        self.template_column_desc_human = self.load_template(prompt_template_path_column_desc_human)
-        self.user_input = user_input
-        self.task_list = ["task2", "task3"]
-    
-    def load_template(self, prompt_template_path) -> str:
-        return read_file(prompt_template_path)
-
-    def choose_task(self):
-        # 사용자의 입력을 받아 어떤 task, 어떤 table? 분석 할지 고르는 기능
-        # llm call로 정하기
-        prompt = self.template_A.format(
-                user_input = self.user_input,
-                task_list = self.task_list
-            )
-
-        response = self.ask_openai(prompt) # json 형식으로 나올 수 있도록 프롬프팅
+        # 사용자 입력 메시지 저장 (memory 반영)
+        if add_to_memory:
+            self.memory.chat_memory.add_user_message(user_input)
 
         try:
-            cleaned_response = response.strip().strip('`').strip()
-            if cleaned_response.startswith('json'):
-                cleaned_response = cleaned_response[4:].strip()
-            parsed_response = json.loads(cleaned_response)
-            chosen_task = parsed_response["chosen_task"].lower()
-
-
-            if chosen_task == "task2" : # 각 테스크별로 각각 만들어둔 모듈 실행
-                print("설명을 원하는 테이블 이름을 입력해주세요")
-                while True:
-                    table_input = input("👤 Input: ")
-                    if table_input.lower() in ["exit", "quit"]:
-                        print("Have a nice day!")
-                        break
-                    app = generate_description_graph()
-                    result = app.invoke({
-                        "input": f"{table_input}"
-                    })
-                    print(print_final_output_task2(result["final_output"]))
-                    break
-
-            elif chosen_task == "task3" :
-                app = generate_table_recommendation_graph()
-                result = app.invoke({
-                    "input": self.user_input
+            reply_msg = self.routing_chain.invoke({
+                "user_input": self.routing_template.format(user_input=user_input)
                 })
-                print(print_final_output_task3(result["final_output"]))
-        
-        except json.JSONDecodeError as e:
-            print(f"Failed to parse response: {response}. Error: {str(e)}")
-            print("assistant", "Choosing Task: I encountered an error in processing. Let me try again.")
-            self.choose_task()
-
+            reply = reply_msg.content.strip()
+            self.memory.chat_memory.add_ai_message(reply)
+            
         except Exception as e:
-            print(f"Error processing response: {str(e)}")
-            print("assistant", "I encountered an unexpected error. Let me try a different approach.")
-            self.choose_task()
-    
-    def run_task2():
-        """
-        input : column desc prompt들 .. + alpha
-        output : 파싱된 실행 결과 ?
-        """
-    
-    def execute(self) -> str:
-        self.choose_task()
+            print(f"[LangChain Routing Error] {e}")
+            return "clarify", user_input
+
+        # print(f"[DEBUG] Routing response: {reply}")
+
+        if reply.startswith("describe:"):
+            return "describe", reply.split("describe:")[1].strip()
+        elif reply == "recommend":
+            return "recommend", user_input
+        elif reply == "text2sql":
+            return "text2sql", user_input
+        elif reply.startswith("followup:"):
+            self.followup_count += 1
+            if self.followup_count > self.followup_max:
+                print("❗️ Too many follow-up questions. Please rephrase your original question.")
+                return "clarify", user_input # fallback
+            
+            question = reply.split("followup:")[1].strip()
+            print(f"🤖 Just to clarify: {question}")
+            user_followup = input("🧑 Your clarification: ")
+                                  
+            self.memory.chat_memory.add_user_message(user_followup)    
+            return self.route_task(user_followup, add_to_memory = False) # recursive
+        else:
+            return "clarify", user_input
+
+    def run_task(self, task: str, content: str):
+        try:
+            if task == "describe":
+                app = generate_description_graph()
+                result = app.invoke({"input": content})
+                final_output = print_final_output_task2(result["final_output"])
+                
+                self.memory.chat_memory.add_ai_message(final_output)
+                
+                return final_output
+            
+            elif task == "recommend":
+                app = generate_table_recommendation_graph()
+                result = app.invoke({"input": content})
+                final_output = print_final_output_task3(result["final_output"])
+                
+                self.memory.chat_memory.add_ai_message(final_output)
+                
+                return final_output
+            
+            elif task == "text2sql": # Placeholder for task 4
+                # app = generate_text2sql_graph()
+                # result = app.invoke({"input": content})
+                # return result["final_output"]
+                return "🔄 Text-to-SQL task will be implemented in future versions." 
+            
+            else:
+                fallback_msg = "🤖 I'm not sure what task to run. Could you clarify your request?"
+                self.memory.chat_memory.add_ai_message(fallback_msg)
+                return fallback_msg
+            
+        except Exception:
+            error_msg =  "❌ An error occurred during task execution:\n" + traceback.format_exc()
+            self.memory.chat_memory.add_ai_message(error_msg)
+            return error_msg
+
+    def execute(self, user_input: str) -> str:
+        self.followup_count = 0  # Reset follow-up count for each new input
+        task, content = self.route_task(user_input)
         
-
-    def ask_openai(self, prompt: str) -> str:
-        response = generate(prompt)
-        return str(response) if response else "No response from OpenAI"
-
+        # print("\n [DEBUG] Memory state (conversation history):")
+        # for m in self.memory.chat_memory.messages:
+        #     prefix = "👤" if isinstance(m, HumanMessage) else "🤖"
+        #     print(f"{prefix} {m.content}")
+        
+        result = self.run_task(task, content)
+        return result
 
 def dict2namespace(config):
-    namespace = argparse.Namespace()
-    for key, value in config.items():
-        if isinstance(value, dict):
-            new_value = dict2namespace(value)
-        else:
-            new_value = value
-        setattr(namespace, key, new_value)
-    return namespace
+    ns = argparse.Namespace()
+    for k, v in config.items():
+        setattr(ns, k, dict2namespace(v) if isinstance(v, dict) else v)
+    return ns
 
-def get_user_input():
-    print("🤖 Hi! How can I assist you? Please enter 'exit' if you want to stop chatting.")
-
+def run_agent_loop(config, input_dir):
+    routing_prompt_path = os.path.join(input_dir, config.routing_prompt + ".txt")
+    if not os.path.exists(routing_prompt_path):
+        raise FileNotFoundError(f"Routing prompt not found: {routing_prompt_path}")
+    
+    agent = Agent(config, routing_prompt_path)
+    
+    print("🤖 Hi! Please enter your question or upload a file path (e.g., './analysis_plan.pdf'). Type 'exit' to quit.")
     while True:
         user_input = input("🧑 Input: ")
         if user_input.lower() in ["exit", "quit"]:
-            print("Have a nice day!")
-            exit(0)
-        return user_input
+            print("👋 Goodbye!")
+            break
+        
+        try:
+            result = agent.execute(user_input)
+            print(result)
 
-def run_agent(config,INPUT_DIR,CONFIG_PATH):
+            # 로그 기록
+            timestamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            with open("logs/session.log", "a", encoding="utf-8") as f:
+                f.write(f"\n[{timestamp}] 👤 {user_input}\n")
+                f.write(f"[{timestamp}] 🤖 {result}\n")
 
-    template_path_A = os.path.join(INPUT_DIR, "prompt_A2" + ".txt")
-    template_path_column_desc_system = os.path.join(INPUT_DIR, config.prompt_column_desc_system + ".txt")
-    template_path_column_desc_human = os.path.join(INPUT_DIR, config.prompt_column_desc_human + ".txt")
-    user_input = get_user_input()
-
-    if not os.path.exists(template_path_A):
-        raise FileNotFoundError(f"Template file not found: {template_path_column_A}")
-    if not os.path.exists(template_path_column_desc_system):
-        raise FileNotFoundError(f"Template file not found: {template_path_column_desc_system}")
-    if not os.path.exists(template_path_column_desc_human):
-        raise FileNotFoundError(f"Template file not found: {template_path_column_desc_human}")
-
-    # output_file = f"{config.experiment_name}.txt"
-    # output_path = os.path.join(OUTPUT_DIR, output_file)
-
-    agent = Agent(config, user_input, template_path_A, template_path_column_desc_system, template_path_column_desc_human)
-    response = agent.execute() 
-
+        except Exception as e:
+            print(f"❌ An error occurred: {e}")
+            traceback.print_exc()
 
 if __name__ == "__main__":
-    
-    INPUT_DIR = "prompts/"
-    OUTPUT_DIR = "outputs/"
     CONFIG_PATH = "_config.yml"
+    INPUT_DIR = "prompts/"
+    
+    os.makedirs("logs", exist_ok=True)
+    log_file = f"logs/session_{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}.log"
+    sys.stdout = Tee(sys.__stdout__, open(log_file, "a", encoding="utf-8"))
 
-    stdout_filename = f"logs/test2.log"
-    os.makedirs(f"logs", exist_ok=True)
-    logfile = open(stdout_filename, "a", encoding="utf-8")
-    sys.stdout = Tee(sys.__stdout__, logfile) 
+    with open(CONFIG_PATH, "r") as f:
+        config = dict2namespace(yaml.safe_load(f))
 
-    with open(CONFIG_PATH, "r") as f: 
-        configs = yaml.safe_load(f)
-    config = dict2namespace(configs)
-
-    run_agent(config,INPUT_DIR,CONFIG_PATH)
+    run_agent_loop(config, INPUT_DIR)
