@@ -14,7 +14,7 @@ from agents.recommend_table import generate_table_recommendation_graph
 
 from prettify import print_final_output_task2, print_final_output_task3
 
-# env 파일 사용 위해 임시로 Chaemyung 디렉토리 경로 설정
+# env 파일 사용 위해 임시로 디렉토리 경로 설정
 sys.path.append(os.path.dirname(__file__))
 os.chdir(os.path.dirname(__file__))
 
@@ -76,7 +76,7 @@ class Agent:
         
         prompt = self.routing_prompt_template.format(user_input=user_input)
         response = generate(prompt)
-        print(f"[DEBUG] Routing LLM response: {response}")
+        # print(f"[DEBUG] Routing LLM response: {response}")
         
         if not response:
             return "LLM has no response. Cannot determine task"
@@ -149,7 +149,7 @@ def run_agent(config, input_dir, output_dir):
     routing_prompt_path = os.path.join(input_dir, config.prompt_A + ".txt")
     
     if not os.path.exists(routing_prompt_path):
-        raise FileNotFoundError(f"Prompt file not found: {prompt_template_path}")
+        raise FileNotFoundError(f"Prompt file not found: {routing_prompt_path}")
 
     os.makedirs(output_dir, exist_ok=True)
     output_file = f"{config.experiment_name}_{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}.log"

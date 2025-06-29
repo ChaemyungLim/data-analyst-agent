@@ -9,8 +9,9 @@ from langchain_core.runnables import RunnableLambda, RunnableMap
 
 from agents.describle_table import generate_description_graph
 from agents.recommend_table import generate_table_recommendation_graph
-# from agents.text2sql import generate_text2sql_graph  # task 4 placeholder
-from prettify import print_final_output_task2, print_final_output_task3
+from agents.text2sql import generate_text2sql_graph 
+
+from prettify import print_final_output_task2, print_final_output_task3, print_final_output_task1
 
 # setup env
 sys.path.append(os.path.dirname(__file__))
@@ -128,10 +129,33 @@ class Agent:
                 return final_output
             
             elif task == "text2sql": # Placeholder for task 4
-                # app = generate_text2sql_graph()
-                # result = app.invoke({"input": content})
-                # return result["final_output"]
-                return "🔄 Text-to-SQL task will be implemented in future versions." 
+                app = generate_text2sql_graph()
+
+                initial_state = {
+                    "query": content,
+                    "messages": [],
+                    "desc_str": None,
+                    "fk_str": None,
+                    "extracted_schema": None,
+                    "final_sql": None,
+                    "qa_pairs": None,
+                    "pred": None,
+                    "result": None,
+                    "error": None,
+                    "pruned": False,
+                    "send_to": "selector_node",
+                    "try_times": 0,
+                    "llm_review": None,
+                    "review_count": 0,
+                    "output": None,
+                    "db_id": "daa",  # 필요 시 바꿔주세요
+                    "notes": None
+                }
+
+                result = app.invoke(initial_state)
+                final_output = print_final_output_task1(result["output"])
+
+                return final_output
             
             else:
                 fallback_msg = "🤖 I'm not sure what task to run. Could you clarify your request?"

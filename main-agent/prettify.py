@@ -82,3 +82,34 @@ def print_final_output_task2(final_output: dict) -> str:
         lines.append("- [No recommended analyses]")
     
     return "\n".join(lines)
+
+def print_final_output_task1(final_output: dict) -> str:
+    lines = []
+
+    # 1. SQL
+    lines.append("📌 [1] Generated SQL Code")
+    lines.append(str(final_output.get("sql", "No SQL generated. Something went wrong!")))
+    lines.append("")
+
+    # 2. Result
+    lines.append("📌 [2] SQL Execution Result")
+    lines.append(str(final_output.get("result", "No result found. Something went wrong!")))
+    lines.append("")
+
+    # 3. Error
+    if final_output.get("error"):
+        lines.append("📌 [3] Error")
+        lines.append(str(final_output.get("error")))
+        lines.append("")
+
+    # 4. Review
+    if final_output.get("llm_review"):
+        lines.append("📌 [4] LLM Review on Output")
+        review = final_output["llm_review"]
+        if isinstance(review, list):
+            lines.extend(str(r) for r in review)  # 리스트면 요소들 하나하나 붙이기
+        else:
+            lines.append(str(review))
+        lines.append("")
+
+    return "\n".join(lines)

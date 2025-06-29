@@ -1,9 +1,6 @@
 # 수정 필요
 
 import json
-from pydantic import BaseModel, Field
-from langchain_core.output_parsers import PydanticOutputParser
-from langchain_core.messages import HumanMessage
 from langchain_community.vectorstores import FAISS
 from langchain.schema import Document
 from langchain_openai import OpenAIEmbeddings
