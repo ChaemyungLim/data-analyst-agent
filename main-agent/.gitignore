@@ -1,8 +1,0 @@
-.env
-**/__pycache__/
-logs/
-outputs/
-config/
-**.yml
-example_docs/
-model/
