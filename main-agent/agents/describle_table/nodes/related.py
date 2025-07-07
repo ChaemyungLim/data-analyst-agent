@@ -1,5 +1,5 @@
 import json
-from config.redis import redis_client
+from utils.redis_client import redis_client
 from data_prep.related_tables import update_table_relations
 
 # -------------------------------

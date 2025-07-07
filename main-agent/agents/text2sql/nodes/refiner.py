@@ -1,7 +1,12 @@
-from ..prompts import refiner_template, refiner_feedback_template
-from ..utils import call_llm, parse_sql_from_string, run_postgres_query
+from prompts.text2sql_prompts import refiner_template, refiner_feedback_template
+from utils.llm import call_llm
+from utils.parsers import parse_sql_from_string
+from utils.database import run_postgres_query
 
-def refiner_node(state):
+from langchain_core.language_models.chat_models import BaseChatModel
+
+
+def refiner_node(state, llm: BaseChatModel):
     db_id = state['db_id']
     sql = state.get('pred') or state.get('final_sql')
     llm_review = state.get('llm_review')
@@ -20,7 +25,7 @@ def refiner_node(state):
             review_feedback=llm_review
         )
         
-        llm_reply = call_llm(prompt)
+        llm_reply = call_llm(prompt, llm=llm)
         new_sql = parse_sql_from_string(llm_reply)
 
         return {
@@ -34,11 +39,12 @@ def refiner_node(state):
     else:
         try:
             print("Executing SQL....")
-            result = run_postgres_query(db_id, sql)
+            result, columns = run_postgres_query(db_id, sql)
             if result and len(result) > 0:
                 return {
                     **state,
                     'result': result,
+                    'columns': columns,  # SQL 실행 후 컬럼명 저장
                     'error': None,  # 에러 초기화
                     'send_to': 'review_node'
                 }

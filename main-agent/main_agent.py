@@ -1,11 +1,14 @@
 import sys, os, yaml, argparse, datetime, traceback
 from dotenv import load_dotenv
 from openai import OpenAI
+
 from langchain_openai import ChatOpenAI
 from langchain.memory import ConversationBufferMemory, ConversationSummaryBufferMemory
 from langchain_core.messages import BaseMessage, AIMessage, HumanMessage
 from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
 from langchain_core.runnables import RunnableLambda, RunnableMap
+
+from utils.llm import get_llm
 
 from agents.describle_table import generate_description_graph
 from agents.recommend_table import generate_table_recommendation_graph
@@ -42,7 +45,10 @@ class Agent:
         self.followup_count = 0
         self.followup_max = 2  # 최대 2번만 followup 허용
         
-        self.llm = ChatOpenAI(model_name="gpt-4o-mini", temperature=0.7)
+        self.llm = get_llm(
+            model = "gpt-4o-mini", # config.llm.model
+            temperature=0.7, 
+            provider= "openai") # config.llm.provider) 
         self.memory = ConversationBufferMemory(
              return_messages=True
         )
@@ -78,7 +84,13 @@ class Agent:
             reply_msg = self.routing_chain.invoke({
                 "user_input": self.routing_template.format(user_input=user_input)
                 })
-            reply = reply_msg.content.strip()
+            
+            # LLM 응답이 str인지 LangChain 메시지 객체인지에 따라 처리
+            if isinstance(reply_msg, str):
+                reply = reply_msg.strip()
+            else:
+                reply = reply_msg.content.strip()
+
             self.memory.chat_memory.add_ai_message(reply)
             
         except Exception as e:
@@ -111,7 +123,7 @@ class Agent:
     def run_task(self, task: str, content: str):
         try:
             if task == "describe":
-                app = generate_description_graph()
+                app = generate_description_graph(llm = self.llm)
                 result = app.invoke({"input": content})
                 final_output = print_final_output_task2(result["final_output"])
                 
@@ -120,7 +132,7 @@ class Agent:
                 return final_output
             
             elif task == "recommend":
-                app = generate_table_recommendation_graph()
+                app = generate_table_recommendation_graph(llm = self.llm)
                 result = app.invoke({"input": content})
                 final_output = print_final_output_task3(result["final_output"])
                 
@@ -129,7 +141,7 @@ class Agent:
                 return final_output
             
             elif task == "text2sql": # Placeholder for task 4
-                app = generate_text2sql_graph()
+                app = generate_text2sql_graph(llm = self.llm)
 
                 initial_state = {
                     "query": content,

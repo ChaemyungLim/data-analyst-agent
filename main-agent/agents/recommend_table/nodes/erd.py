@@ -1,7 +1,7 @@
 import json
 import datetime
 import graphviz
-from config.redis import redis_client
+from utils.redis_client import redis_client
 
 
 def generate_erd(state):
@@ -54,7 +54,7 @@ def generate_erd(state):
     output_path = f"./outputs/images/erd/{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}"
     erd.render(output_path, cleanup=True)
 
-       
+
     # final_output
     final_output = {
     "objective_summary": state.get("objective_summary", "No summary found. Something went wrong!"),

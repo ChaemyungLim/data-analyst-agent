@@ -3,13 +3,13 @@ import json
 from prompts.column_description_prompt import prompt, parser, TableAnalysis
 from data_prep.metadata import generate_table_markdown, update_metadata
 from utils.llm import call_llm
-from config.redis import redis_client
-
+from utils.redis_client import redis_client
+from langchain_core.language_models.chat_models import BaseChatModel
 
 # -------------------------------
 # describe_table_node
 # -------------------------------
-def describe_table(table_name: str) -> TableAnalysis:
+def describe_table(table_name: str, llm: BaseChatModel) -> TableAnalysis:
     try:
         # Redis에서 schema 정보 불러오기
         redis_key = f"metadata:{table_name}"
@@ -28,16 +28,17 @@ def describe_table(table_name: str) -> TableAnalysis:
                             variables={
                                 "table_name": table_name,
                                 "column_summary": schema_str
-                                })
+                                }
+                            , llm=llm)
 
         return response
     except Exception as e:
         print(f"Error: Failed to describe table '{table_name}': {e}")
         raise
 
-def describe_table_node(state):
+def describe_table_node(state, llm):
     table_name = state["input"]
-    analysis = describe_table(table_name)
+    analysis = describe_table(table_name, llm = llm)
     return {
         "table_analysis": analysis.model_dump()
     }

@@ -1,9 +1,10 @@
-from ..prompts import review_noresult_template, review_result_template
-from ..utils import call_llm
+from prompts.text2sql_prompts import review_noresult_template, review_result_template
+from utils.llm import call_llm
+
+from langchain_core.language_models.chat_models import BaseChatModel
 
 # output parser 추가해줘야할수도..
-
-def review_node(state):
+def review_node(state, llm: BaseChatModel):
     result = state.get("result")
     error = state.get("error")
     sql = state.get("pred") or state.get("final_sql")
@@ -29,7 +30,7 @@ def review_node(state):
                 sql=sql,
             )
             print(f"Reviewing the SQL logic...")
-            reply = call_llm(prompt)
+            reply = call_llm(prompt, llm = llm)
             # print("LLM Review Reply:", reply)
             
             if "No" in reply:
@@ -53,7 +54,7 @@ def review_node(state):
         )
        
         print(f"Reviewing the final answer...")
-        reply = call_llm(prompt)
+        reply = call_llm(prompt, llm = llm)
         # print("LLM Review Reply:", reply)
 
         if "No" in reply:

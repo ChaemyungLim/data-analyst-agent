@@ -5,14 +5,16 @@ from .nodes.objective_summary import extract_objective_summary
 from .nodes.table_recommend import recommend_tables
 from .nodes.erd import generate_erd
 
+from functools import partial
 
-def generate_table_recommendation_graph():
+
+def generate_table_recommendation_graph(llm):
     graph = StateGraph(RecommendState)
 
     graph.add_node("set_input_node", set_input_type)
     graph.add_node("parse_document_node", parse_document)
-    graph.add_node("extract_objective_summary_node", extract_objective_summary)
-    graph.add_node("recommend_tables_node", recommend_tables)
+    graph.add_node("extract_objective_summary_node", partial(extract_objective_summary, llm = llm))
+    graph.add_node("recommend_tables_node", partial(recommend_tables, llm = llm))
     graph.add_node("generate_erd_node", generate_erd)
 
     graph.set_entry_point("set_input_node")

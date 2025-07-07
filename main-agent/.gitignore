@@ -5,3 +5,4 @@ outputs/
 config/
 **.yml
 example_docs/
+model/

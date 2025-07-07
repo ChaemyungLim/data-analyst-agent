@@ -5,8 +5,9 @@ from langchain_community.vectorstores import FAISS
 from langchain.schema import Document
 from langchain_openai import OpenAIEmbeddings
 
-from config.redis import redis_client
+from langchain_core.language_models.chat_models import BaseChatModel
 from utils.llm import call_llm
+from utils.redis_client import redis_client
 from prompts.recommend_table_analysis_prompt import prompt, parser
 
 from pathlib import Path
@@ -45,7 +46,7 @@ def get_table_candidates(query: str, k: int = 15, redis_client=redis_client) -> 
     return "\n".join(lines)
 
 
-def recommend_tables(state):
+def recommend_tables(state, llm: BaseChatModel):
     objective = state["objective_summary"]
     table_list = get_table_candidates(objective, k=15)
 
@@ -57,9 +58,10 @@ def recommend_tables(state):
                 "objective": objective,
                 "tables": table_list,
                 "format_instructions": parser.get_format_instructions()
-            }
+            },
+            llm=llm
         )
-        state["recommended_tables"] = response.table_list
+        state["recommended_tables"] = response.recommended_tables
         state["recommended_method"] = response.analysis_method
     except Exception as e:
         print(f"Error: Failed to parse recommended tables: {e}")

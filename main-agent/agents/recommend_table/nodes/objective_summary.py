@@ -1,6 +1,7 @@
-from langchain.text_splitter import RecursiveCharacterTextSplitter
-from langchain_community.vectorstores import FAISS
 from langchain_openai import OpenAIEmbeddings
+from langchain_community.vectorstores import FAISS
+from langchain.text_splitter import RecursiveCharacterTextSplitter
+from langchain_core.language_models.chat_models import BaseChatModel
 
 from utils.llm import call_llm
 from prompts.summarize_objective_prompt import prompt, parser
@@ -10,7 +11,7 @@ from dotenv import load_dotenv
 load_dotenv(dotenv_path=Path(__file__).parents[1] / ".env")
 
 
-def extract_objective_summary(state):
+def extract_objective_summary(state, llm: BaseChatModel):
     full_text = state.get("parsed_text") or state.get("input")
 
     splitter = RecursiveCharacterTextSplitter(chunk_size=500, chunk_overlap=50)
@@ -26,7 +27,8 @@ def extract_objective_summary(state):
             variables={
                 "analysis_text": selected,  # 분석 텍스트
                 "format_instructions": parser.get_format_instructions()
-            }
+            },
+            llm=llm
         )
         # print("Objective Summary Response:", response)
         return {
