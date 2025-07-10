@@ -54,32 +54,32 @@
 
 import asyncio
 from utils.redis_client import async_redis_client
-from agents_async.describle_table import generate_description_graph
-from agents_async.recommend_table import generate_table_recommendation_graph
-from agents_async.text2sql.graph import generate_text2sql_graph
+# from archived.agents_async.describle_table import generate_description_graph
+# from  archived.agents_async.recommend_table import generate_table_recommendation_graph
+from  archived.agents_async.text2sql.graph import generate_text2sql_graph
 from prettify import print_final_output_task2, print_final_output_task3, print_final_output_task1
 
 
 async def test():
     try: 
-        # task2 test (table description)
-        table_name = "users"
-        graph = generate_description_graph()
-        result = await graph.ainvoke({
-            "input": table_name
-        })
-        print(print_final_output_task2(result["final_output"]))
+        # # task2 test (table description)
+        # table_name = "users"
+        # graph = generate_description_graph()
+        # result = await graph.ainvoke({
+        #     "input": table_name
+        # })
+        # print(print_final_output_task2(result["final_output"]))
 
         # task3 test (table recommendation)
-        app = generate_table_recommendation_graph()
-        result = await app.ainvoke({
-            "input": "I want to test the hypothesis that customers who purchase more frequently also tend to spend more money overall."
-        })
-        print(print_final_output_task3(result["final_output"]))
+        # app = generate_table_recommendation_graph(llm=None)  # lm=None으로 설정하여 기본 LLM 사용
+        # result = await app.ainvoke({
+        #     "input": "I want to test the hypothesis that customers who purchase more frequently also tend to spend more money overall."
+        # })
+        # print(print_final_output_task3(result["final_output"]))
 
         # task1 test (text2sql)
         input = "I want to test the hypothesis that customers who purchase more frequently also tend to spend more money overall."
-        app = generate_text2sql_graph()
+        app = generate_text2sql_graph(llm=None)  # lm=None으로 설정하여 기본 LLM 사용
 
         initial_state = {
             "query": input,

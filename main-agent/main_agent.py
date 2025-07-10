@@ -13,6 +13,7 @@ from utils.llm import get_llm
 from agents.describle_table import generate_description_graph
 from agents.recommend_table import generate_table_recommendation_graph
 from agents.text2sql import generate_text2sql_graph 
+from agents.causal_analysis import generate_causal_analysis_graph
 
 from prettify import print_final_output_task2, print_final_output_task3, print_final_output_task1
 
@@ -105,6 +106,8 @@ class Agent:
             return "recommend", user_input
         elif reply == "text2sql":
             return "text2sql", user_input
+        elif reply == "causal_analysis":
+            return "causal_analysis", user_input
         elif reply.startswith("followup:"):
             self.followup_count += 1
             if self.followup_count > self.followup_max:
@@ -168,6 +171,13 @@ class Agent:
                 final_output = print_final_output_task1(result["output"])
 
                 return final_output
+            
+            elif task == "causal_analysis":
+                app = generate_causal_analysis_graph(llm = self.llm)
+                result = app.invoke({"input": content})
+                
+                self.memory.chat_memory.add_ai_message(result)
+                return result
             
             else:
                 fallback_msg = "🤖 I'm not sure what task to run. Could you clarify your request?"

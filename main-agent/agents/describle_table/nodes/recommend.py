@@ -1,5 +1,5 @@
 from utils.llm import call_llm
-from prompts.recommend_usecases_prompt import prompt, parser
+from prompts.describe_table_prompts import usecase_parser as parser, usecase_prompt as prompt
 from langchain_core.language_models.chat_models import BaseChatModel
 
 def recommend_analysis(table_description: str, related_tables_info: dict, llm: BaseChatModel) -> str:

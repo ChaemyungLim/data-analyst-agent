@@ -1,6 +1,6 @@
 import json
 
-from prompts.column_description_prompt import prompt, parser, TableAnalysis
+from prompts.describe_table_prompts import column_description_prompt as prompt, column_description_parser as parser, TableAnalysis
 from data_prep.metadata import generate_table_markdown, update_metadata
 from utils.llm import call_llm
 from utils.redis_client import redis_client

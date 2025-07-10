@@ -1,6 +1,6 @@
 import json
 from utils.redis_client import redis_client
-from data_prep.related_tables import update_table_relations
+from data_prep.related_tables import update_table_relations_sync
 
 # -------------------------------
 # related_tables_node
@@ -23,7 +23,7 @@ def get_related_graph(graph: dict, table_name: str) -> dict:
     return related
 
 def related_tables(table_name: str) -> str:
-    update_table_relations()
+    update_table_relations_sync()
     graph_raw = redis_client.get("table_relations")
     graph = json.loads(graph_raw) if graph_raw else {}
     related = get_related_graph(graph, table_name)
