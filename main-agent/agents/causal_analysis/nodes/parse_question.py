@@ -4,11 +4,12 @@ from typing import Callable, Dict
 
 from utils.llm import call_llm
 from data_prep.metadata import generate_table_markdown
-from utils.redis_client import redis_client
 from prompts.causal_agent_prompts import parse_query_prompt, parse_query_parser
 
 from langchain_core.runnables import RunnableLambda
 from langchain_core.language_models.chat_models import BaseChatModel
+
+from utils.redis_client import redis_client
 
 
 def build_parse_question_node(llm: BaseChatModel) -> Callable:
@@ -20,15 +21,22 @@ def build_parse_question_node(llm: BaseChatModel) -> Callable:
         table_markdowns = []
 
         for key in table_keys:
+            if key == "metadata:table_names":
+                continue
+
             table_name = key.split(":")[1]
             raw = redis_client.get(key)
+            
             if not raw:
                 continue
-            metadata = json.loads(raw)
-            schema = metadata.get("schema", {})
-            markdown = generate_table_markdown({table_name: schema})
-            table_markdowns.append(markdown)
-
+            try:
+                metadata = json.loads(raw)
+                schema = metadata.get("schema", {})
+                markdown = generate_table_markdown({table_name: schema})
+                table_markdowns.append(markdown)
+            except Exception as e:
+                print(f"⚠️ Error parsing metadata for key {key}: {e}")        
+        
         full_markdown = "\n\n".join(table_markdowns)
 
         result = call_llm(
@@ -40,8 +48,7 @@ def build_parse_question_node(llm: BaseChatModel) -> Callable:
             },
             llm=llm
         )
-
-        state["parsed_info"] = result.dict()
+        state["parsed_query"] = result.dict()
         return state
 
     return RunnableLambda(_parse_question)

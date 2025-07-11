@@ -1,7 +1,6 @@
 # nodes/strategy_selection.py
 
 from typing import Dict, Any
-from langchain_core.runnables import RunnableLambda
 from langchain_core.language_models.chat_models import BaseChatModel
 
 from utils.llm import call_llm
@@ -11,16 +10,18 @@ from prompts.causal_agent_prompts import (
     strategy_output_parser
 )
 
-def build_strategy_selection_node(llm: BaseChatModel) -> RunnableLambda:
+def build_strategy_selection_node(llm: BaseChatModel):
     """
     Selects a causal strategy (task, identification method, estimator, refuter) 
     using an LLM based on user question, variables, and data sample.
     """
 
-    def invoke(inputs: Dict[str, Any]) -> Dict[str, Any]:
-        parsed_vars = inputs.get("parsed_query", {})
-        question = inputs.get("question", "")
-        df_sample = inputs.get("df_sample", "")
+    def node(state: Dict) -> Dict:
+        df_raw = state["df_raw"]
+        df_sample = df_raw.head(10).to_csv(index=False) if df_raw is not None else ""
+        
+        parsed_vars = state["parsed_query"]
+        question = state["input"]
 
         prompt_input = {
             "question": question,
@@ -39,9 +40,7 @@ def build_strategy_selection_node(llm: BaseChatModel) -> RunnableLambda:
             llm=llm
         )
 
-        return {
-            **inputs,
-            "strategy": result
-        }
+        state["strategy"] = result
+        return state
 
-    return RunnableLambda(invoke)
+    return node

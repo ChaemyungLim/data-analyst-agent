@@ -17,7 +17,7 @@ def generate_causal_analysis_graph(llm):
     # Add nodes
     graph.add_node("parse_question", build_parse_question_node(llm))
     graph.add_node("generate_sql_query", build_generate_sql_query_node(llm))
-    graph.add_node("fetch_data", build_fetch_data_node())
+    graph.add_node("fetch_data", build_fetch_data_node(llm))
     graph.add_node("preprocess", build_preprocess_node())
     graph.add_node("strategy_selection", build_strategy_selection_node(llm))
     graph.add_node("dowhy_analysis", build_dowhy_analysis_node())

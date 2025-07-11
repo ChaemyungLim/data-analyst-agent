@@ -14,9 +14,10 @@ def build_generate_answer_node(llm: BaseChatModel) -> RunnableLambda:
     """
 
     def invoke(state: Dict) -> Dict:
-        strategy = state.get("strategy")
-        estimate = state.get("causal_estimate")
-        refutation_result = state.get("refutation_result", None)
+        strategy = state["strategy"]
+        estimate = state["causal_estimate"]
+        refutation_result = state["refutation_result"]
+        label_maps = state["label_maps"]
 
         if not strategy or not estimate:
             raise ValueError("Missing strategy or causal_estimate")
@@ -28,6 +29,9 @@ def build_generate_answer_node(llm: BaseChatModel) -> RunnableLambda:
             "effect_value": estimate.value,
             "refutation_result": refutation_result or "No refutation performed",
         }
+
+        if label_maps:
+            llm_input["label_maps"] = label_maps
 
         # LLM 호출
         result = call_llm(
