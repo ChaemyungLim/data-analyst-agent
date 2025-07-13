@@ -3,6 +3,7 @@
 from typing import Dict, Any
 from langchain_core.language_models.chat_models import BaseChatModel
 
+from agents.causal_analysis.state import Strategy
 from utils.llm import call_llm
 
 from prompts.causal_agent_prompts import (
@@ -40,7 +41,12 @@ def build_strategy_selection_node(llm: BaseChatModel):
             llm=llm
         )
 
-        state["strategy"] = result
+        state["strategy"] = Strategy(
+            task=result.causal_task,
+            identification_method=result.identification_strategy,
+            estimator=result.estimation_method,
+            refuter=result.refutation_methods[0] if result.refutation_methods else None
+        )
         return state
 
     return node

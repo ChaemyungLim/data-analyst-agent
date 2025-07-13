@@ -1,3 +1,4 @@
+from pathlib import Path
 import sys, os, yaml, argparse, datetime, traceback
 from dotenv import load_dotenv
 from openai import OpenAI
@@ -15,7 +16,7 @@ from agents.recommend_table import generate_table_recommendation_graph
 from agents.text2sql import generate_text2sql_graph 
 from agents.causal_analysis import generate_causal_analysis_graph
 
-from prettify import print_final_output_task2, print_final_output_task3, print_final_output_task1
+from prettify import print_final_output_task2, print_final_output_task3, print_final_output_task1, print_final_output_causal
 
 # setup env
 sys.path.append(os.path.dirname(__file__))
@@ -40,12 +41,32 @@ def read_file(path):
         return None
 
 class Agent:
-    def __init__(self, config, prompt_routing_path):
+    def __init__(self, config, prompt_routing_path, db_id=None):
         self.config = config
         self.routing_template = read_file(prompt_routing_path)
         self.followup_count = 0
         self.followup_max = 2  # 최대 2번만 followup 허용
+
+        # db 설정
+        if db_id:
+            self.db_id = db_id
+        else:
+            db_config = config.database
+            self.db_type = db_config.type.lower()
+
+            if self.db_type == "postgresql":
+                self.db_id = db_config.postgresql.dbname
+
+            elif self.db_type == "sqlite":
+                sqlite_path = db_config.sqlite.sqlite_path
+                if "{db_name}" in sqlite_path:
+                    self.db_id = "daa"  
+                else:
+                    self.db_id = Path(sqlite_path).stem  # e.g. "data/daa.sqlite" → "daa"
+            else:
+                self.db_id = "daa"
         
+
         self.llm = get_llm(
             model = "gpt-4o-mini", # config.llm.model
             temperature=0.7, 
@@ -127,7 +148,7 @@ class Agent:
         try:
             if task == "describe":
                 app = generate_description_graph(llm = self.llm)
-                result = app.invoke({"input": content})
+                result = app.invoke({"input": content, "db_id": self.db_id})
                 final_output = print_final_output_task2(result["final_output"])
                 
                 self.memory.chat_memory.add_ai_message(final_output)
@@ -136,7 +157,7 @@ class Agent:
             
             elif task == "recommend":
                 app = generate_table_recommendation_graph(llm = self.llm)
-                result = app.invoke({"input": content})
+                result = app.invoke({"input": content, "db_id": self.db_id})
                 final_output = print_final_output_task3(result["final_output"])
                 
                 self.memory.chat_memory.add_ai_message(final_output)
@@ -163,8 +184,7 @@ class Agent:
                     "llm_review": None,
                     "review_count": 0,
                     "output": None,
-                    "db_id": "daa",  # 필요 시 바꿔주세요
-                    "notes": None
+                    "db_id": self.db_id 
                 }
 
                 result = app.invoke(initial_state)
@@ -174,10 +194,12 @@ class Agent:
             
             elif task == "causal_analysis":
                 app = generate_causal_analysis_graph(llm = self.llm)
-                result = app.invoke({"input": content})
+                result = app.invoke({"input": content, "db_id": self.db_id})
                 
-                self.memory.chat_memory.add_ai_message(result)
-                return result
+                final_output = print_final_output_causal(result)
+                self.memory.chat_memory.add_ai_message(final_output)
+
+                return final_output
             
             else:
                 fallback_msg = "🤖 I'm not sure what task to run. Could you clarify your request?"
@@ -207,12 +229,12 @@ def dict2namespace(config):
         setattr(ns, k, dict2namespace(v) if isinstance(v, dict) else v)
     return ns
 
-def run_agent_loop(config, input_dir):
+def run_agent_loop(config, input_dir, db_id=None):
     routing_prompt_path = os.path.join(input_dir, config.routing_prompt + ".txt")
     if not os.path.exists(routing_prompt_path):
         raise FileNotFoundError(f"Routing prompt not found: {routing_prompt_path}")
     
-    agent = Agent(config, routing_prompt_path)
+    agent = Agent(config, routing_prompt_path, db_id=db_id)
     
     print("🤖 Hi! Please enter your question or upload a file path (e.g., './analysis_plan.pdf'). Type 'exit' to quit.")
     while True:
@@ -234,6 +256,7 @@ def run_agent_loop(config, input_dir):
         except Exception as e:
             print(f"❌ An error occurred: {e}")
             traceback.print_exc()
+    
 
 if __name__ == "__main__":
     CONFIG_PATH = "_config.yml"

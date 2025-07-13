@@ -1,4 +1,5 @@
 import re
+import pandas as pd
 
 def print_final_output_task3(final_output: dict) -> str:
     lines = []
@@ -7,16 +8,6 @@ def print_final_output_task3(final_output: dict) -> str:
     lines.append("📌 [1] Objective Summary")
     lines.append(final_output.get("objective_summary", "No summary found. Something went wrong!"))
     lines.append("")
-
-    # # 2. Recommended Tables
-    # lines.append("📌 [2] Recommended Tables")
-    # tables = final_output.get("recommended_tables", [])
-    # if tables:
-    #     for i, table in enumerate(tables, 1):
-    #         lines.append(f"{i}. `{table}`")
-    # else:
-    #     lines.append("No tables recommended.")
-    # lines.append("")
 
     # 2. Recommended Tables (Important Columns 추가)
     lines.append("📌 [2] Recommended Tables")
@@ -110,18 +101,12 @@ def print_final_output_task1(final_output: dict) -> str:
     lines.append("")
 
     # 2. Result
-    # lines.append("📌 [2] SQL Execution Result")
-    # lines.append(str(final_output.get("result", "No result found. Something went wrong!")))
-    # lines.append("")
-
-    # 2. Result
     lines.append("📌 [2] SQL Execution Result")
-
     result = final_output.get("result")
     columns = final_output.get("columns")
 
     if isinstance(result, list):
-        display_rows = result[:5] if len(result) > 5 else result
+        display_rows = result[:10] if len(result) > 10 else result
         
         if columns:
             col_widths = [len(col) for col in columns]
@@ -140,8 +125,8 @@ def print_final_output_task1(final_output: dict) -> str:
             # 열 정보 없을 경우 그냥 출력
             for row in display_rows:
                 lines.append(" | ".join(str(cell) for cell in row))
-        if len(result) > 5:
-            lines.append(f"\nToo many rows returned ({len(result)} rows). Showing top 5.")
+        if len(result) > 10:
+            lines.append(f"\nToo many rows returned ({len(result)} rows). Showing top 10.")
     else:
         lines.append(str(result))
     lines.append("")
@@ -164,5 +149,59 @@ def print_final_output_task1(final_output: dict) -> str:
         else:
             lines.append(str(review))
         lines.append("")
+
+    return "\n".join(lines)
+
+def print_final_output_causal(final_output: dict[str, any]) -> str:
+    lines = []
+
+    # 1. Parsed Query
+    lines.append("📌 [1] Parsed Query")
+    lines.append("The causal variables extracted from the user query.")
+    parsed_query = final_output.get("parsed_query", {})
+    if parsed_query:
+        for key, value in parsed_query.items():
+            lines.append(f"- {key}: {value}")
+    else:
+        lines.append("No parsed query found.")
+    lines.append("")
+
+    # 2. SQL Query
+    lines.append("📌 [2] SQL Query")
+    lines.append("The SQL query generated to extract relevant data.")
+    sql_query = final_output.get("sql_query", "No SQL query found.")
+    lines.append(sql_query)
+    lines.append("")
+
+    # 3. Raw Data Preview
+    lines.append("📌 [3] Raw Data Preview")
+    lines.append("The first few rows of the extracted raw dataset.")
+    df_raw = final_output.get("df_raw", None)
+    if isinstance(df_raw, pd.DataFrame):
+        lines.append(df_raw.head().to_markdown())
+    else:
+        lines.append("No raw DataFrame found.")
+    lines.append("")
+
+    # 4. Strategy
+    lines.append("📌 [4] Strategy")
+    lines.append("The causal inference strategy selected by the system.")
+    strategy = final_output.get("strategy", None)
+    if strategy:
+        lines.append(f"- Task: {strategy.task}")
+        lines.append(f"- Identification Method: {strategy.identification_method}")
+        lines.append(f"- Estimator: {strategy.estimator}")
+        if strategy.refuter:
+            lines.append(f"- Refuter: {strategy.refuter}")
+    else:
+        lines.append("No strategy found.")
+    lines.append("")
+
+    # 5. Final Answer
+    lines.append("📌 [5] Final Answer")
+    lines.append("The summary of the causal effect.")
+    final_answer = final_output.get("final_answer", "No final answer found.")
+    lines.append(final_answer)
+    lines.append("")
 
     return "\n".join(lines)

@@ -25,6 +25,7 @@ def generate_valid_sql(llm, parsed_query, schema_str):
             "confounders": parsed_query["confounders"],
             "mediators": parsed_query.get("mediators", []),
             "instrumental_variables": parsed_query.get("instrumental_variables", []),
+            "additional_notes": parsed_query.get("additional_notes", ""),
             "table_schemas": schema_str,
         },
         llm=llm,
@@ -33,6 +34,7 @@ def generate_valid_sql(llm, parsed_query, schema_str):
 
 def build_generate_sql_query_node(llm: BaseChatModel):
     def node(state: Dict) -> Dict:
+        db_id = state["db_id"]
         parsed_query = state["parsed_query"]
         if not parsed_query:
             raise ValueError("Missing parsed_info in state")
@@ -63,7 +65,7 @@ def build_generate_sql_query_node(llm: BaseChatModel):
         # Redis에서 메타데이터 수집
         metadata_dict = {}
         for table in tables:
-            redis_key = f"metadata:{table}"
+            redis_key = f"{db_id}:metadata:{table}" # ⭐
             raw = redis_client.get(redis_key)
             if not raw:
                 raise ValueError(f"No metadata found in Redis for table: {table}")

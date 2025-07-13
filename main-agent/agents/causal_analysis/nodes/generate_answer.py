@@ -15,6 +15,7 @@ def build_generate_answer_node(llm: BaseChatModel) -> RunnableLambda:
 
     def invoke(state: Dict) -> Dict:
         strategy = state["strategy"]
+        parsed_query = state["parsed_query"]
         estimate = state["causal_estimate"]
         refutation_result = state["refutation_result"]
         label_maps = state["label_maps"]
@@ -24,14 +25,24 @@ def build_generate_answer_node(llm: BaseChatModel) -> RunnableLambda:
 
         # LLM 입력 구성
         llm_input = {
+            "treatment": parsed_query["treatment"],
+            "treatment_expression": parsed_query["treatment_expression"],
+            "treatment_expression_description": parsed_query["treatment_expression_description"],
+            "outcome": parsed_query["outcome"],
+            "outcome_expression": parsed_query["outcome_expression"],
+            "outcome_expression_description": parsed_query["outcome_expression_description"],
+            "main_table": parsed_query["main_table"],
+            "join_tables": parsed_query["join_tables"],
+            "confounders": parsed_query["confounders"],
+            "mediators": parsed_query.get("mediators", []),
+            "instrumental_variables": parsed_query.get("instrumental_variables", []),
+            "additional_notes": parsed_query.get("additional_notes", ""),
             "estimator": strategy.estimator,
             "task": strategy.task,
             "effect_value": estimate.value,
             "refutation_result": refutation_result or "No refutation performed",
+            "label_maps": label_maps or {}
         }
-
-        if label_maps:
-            llm_input["label_maps"] = label_maps
 
         # LLM 호출
         result = call_llm(
@@ -42,6 +53,7 @@ def build_generate_answer_node(llm: BaseChatModel) -> RunnableLambda:
         )
 
         state["final_answer"] = result
+        state["final_answer"] = result.explanation if hasattr(result, "explanation") else str(result)
         return state
 
     return RunnableLambda(invoke)

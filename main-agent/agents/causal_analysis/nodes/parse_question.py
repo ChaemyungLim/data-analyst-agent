@@ -4,6 +4,7 @@ from typing import Callable, Dict
 
 from utils.llm import call_llm
 from data_prep.metadata import generate_table_markdown
+from utils.metadata_validation import extract_table_metadata, validate_parsed_query
 from prompts.causal_agent_prompts import parse_query_prompt, parse_query_parser
 
 from langchain_core.runnables import RunnableLambda
@@ -15,16 +16,17 @@ from utils.redis_client import redis_client
 def build_parse_question_node(llm: BaseChatModel) -> Callable:
     def _parse_question(state: Dict) -> Dict:
         question = state["input"]
+        db_id = state["db_id"] # ⭐
 
         # Redis에서 저장된 테이블 리스트 불러오기
-        table_keys = redis_client.keys("metadata:*")
+        table_keys = redis_client.keys(f"{db_id}:metadata:*") # ⭐
         table_markdowns = []
 
         for key in table_keys:
-            if key == "metadata:table_names":
+            if key == f"{db_id}:metadata:table_names": # ⭐
                 continue
 
-            table_name = key.split(":")[1]
+            table_name = key.split(":")[2] # ⭐ 1 -> 2
             raw = redis_client.get(key)
             
             if not raw:
@@ -38,17 +40,33 @@ def build_parse_question_node(llm: BaseChatModel) -> Callable:
                 print(f"⚠️ Error parsing metadata for key {key}: {e}")        
         
         full_markdown = "\n\n".join(table_markdowns)
+        table_metadata, primary_keys = extract_table_metadata(table_markdowns)
 
-        result = call_llm(
-            prompt=parse_query_prompt,
-            parser=parse_query_parser,
-            variables={
-                "question": question,
-                "tables": full_markdown
-            },
-            llm=llm
-        )
-        state["parsed_query"] = result.dict()
+        # 2. 최대 2회 루프 시도
+        parsed = None
+        for attempt in range(3):  # 0, 1, 2
+            fix_note = ""
+            if attempt == 1 and issues:  # 재시도 시
+                fix_note = "\n\nFix Note:\n" + "\n".join(issues)
+
+            result = call_llm(
+                prompt=parse_query_prompt,
+                parser=parse_query_parser,
+                variables={
+                    "question": question,
+                    "tables": full_markdown + fix_note
+                },
+                llm=llm
+            )
+
+            parsed = result.dict()
+            issues = validate_parsed_query(parsed, table_metadata, primary_keys)
+
+            # 문제가 없으면 종료
+            if not issues:
+                break
+
+        state["parsed_query"] = parsed
         return state
 
     return RunnableLambda(_parse_question)

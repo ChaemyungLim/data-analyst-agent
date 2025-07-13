@@ -36,9 +36,9 @@ def build_dowhy_analysis_node() -> RunnableLambda:
             data=df,
             treatment=treatment,
             outcome=outcome,
-            common_causes=confounders if strategy.identification_strategy == "backdoor" else None,
-            instruments=ivs if strategy.identification_strategy == "iv" else None,
-            mediators=mediators if strategy.identification_strategy == "mediation" else None,
+            common_causes=confounders if strategy.identification_method == "backdoor" else None,
+            instruments=ivs if strategy.identification_method == "iv" else None,
+            mediators=mediators if strategy.identification_method == "mediation" else None,
         )
 
         identified_estimand = model.identify_effect()
@@ -52,7 +52,7 @@ def build_dowhy_analysis_node() -> RunnableLambda:
             "backdoor.distance_matching"
         ]
 
-        if strategy.estimation_method in classification_estimators:
+        if strategy.estimator in classification_estimators:
             method_params["propensity_score_model"] = TabPFNClassifier()
 
             # Handle categorical variables: convert to numeric codes and store mappings
@@ -67,16 +67,16 @@ def build_dowhy_analysis_node() -> RunnableLambda:
 
         estimate = model.estimate_effect(
             identified_estimand,
-            method_name=strategy.estimation_method,
+            method_name=strategy.estimator,
             method_params=method_params if method_params else None
         )
 
         # Step 3: Optional refutation
-        if strategy.refutation_methods:
+        if strategy.refuter:
             refute_result = model.refute_estimate(
                 identified_estimand,
                 estimate,
-                method_name=strategy.refutation_methods[0],
+                method_name=strategy.refuter[0],
             )
             state["refutation_result"] = refute_result.summary()
 
