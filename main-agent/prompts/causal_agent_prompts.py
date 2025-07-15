@@ -1,53 +1,46 @@
-from typing import List
+from typing import List, Optional
 from pydantic import BaseModel, Field
 from langchain.output_parsers import PydanticOutputParser
 from langchain_core.prompts import ChatPromptTemplate
+from langchain_core.output_parsers import StrOutputParser
+
 
 ### 1. Causal Question Parsing Prompt
 class ParsedCausalQuery(BaseModel):
-    treatment: str = Field(..., description="Name of treatment variable (even if derived)")
-    treatment_expression: str = Field(..., description="SQL expression to compute the treatment (can be CASE WHEN, etc.)")
-    treatment_expression_description: str = Field(..., description="Human-readable description of what the treatment expression represents")
-    
-    outcome: str = Field(..., description="Name of outcome variable (even if derived)")
-    outcome_expression: str = Field(..., description="SQL expression to compute the outcome")
-    outcome_expression_description: str = Field(..., description="Human-readable description of what the outcome expression represents")
-
-    main_table: str = Field(..., description="Primary table to use")
-    join_tables: List[str] = Field(..., description="Additional related tables to join")
-    confounders: List[str] = Field(..., description="List of confounders in 'table.column' or SQL expression format")
-    mediators: List[str] = Field(default_factory=list, description="List of mediators in 'table.column' or SQL expression format (optional)")
-    instrumental_variables: List[str] = Field(default_factory=list, description="List of instrumental variables in 'table.column' or SQL expression format (optional)")
+    treatment: str
+    treatment_expression: str
+    outcome: str
+    outcome_expression: str
+    confounders: List[str]
+    confounder_expressions: List[str]
+    mediators: List[str] = []
+    instrumental_variables: List[str] = []
     
 parse_query_parser = PydanticOutputParser(pydantic_object=ParsedCausalQuery)
 
 parse_query_prompt = ChatPromptTemplate.from_messages([
     ("system", """
-You are an expert causal data analyst.
+You are a expert data analyst for causal inference.
 
-Given a natural language question and a set of database table descriptions, extract the following fields:
+Given a natural language question, table descriptions and an expression_dict, extract:
 
-- treatment: the variable being manipulated
-- outcome: the variable being affected
-- treatment_expression / outcome_expression: SQL expressions to compute the variables (may use CASE WHEN, COUNT, etc.)
-- treatment_expression_description / outcome_expression_description: natural language explanations of what the expressions represent
-- main_table: the primary table containing the data
-- join_tables: any additional tables that should be joined
-- confounders: variables to adjust for in the analysis
-- mediators: variables that mediate the causal effect (optional)
-- instrumental_variables: variables for IV estimation (optional)
+- treatment: variable being manipulated
+- outcome: variable being affected
+- treatment_expression / outcome_expression: SQL expression to compute the variable (may include CASE WHEN, math functions, etc.)
+- confounders: control variables for backdoor adjustment
+- confounder_expressions: SQL expressions for each confounder (same order)
+- mediators: optional variables on the causal path
+- instrumental_variables: optional IVs
 
-## Rules:
-- Only use column names and relationships from the provided table schemas.
-- Do not include table aliases like "cu" or "r". Use full table names only
-- If the treatment or outcome refers to whether an event occurred (e.g., “used a coupon”, “wrote a review”) or the likelihood of an action, define a binary variable using `CASE WHEN ... THEN 1 ELSE 0 END`.
-- If it refers to the number of events (e.g., “number of reviews”), use `COUNT(...)`.
-- If it refers to a continuous value (e.g., a rating score), use the raw column name.
-- Avoid identifier-like columns (e.g., user_id, product_id, review_id) as confounders or treatment/outcome variables.
-- You must fill out both the expression and its explanation for both treatment and outcome.
+# Rules:
+- Use only columns or derivable expressions from the schema.
+- Do NOT use identifiers like *_id or primary keys as variables.
+- If a variable (e.g., age) needs to be derived, define an alias (e.g., "age") and include its SQL expression in confounder_expressions.
+- Expressions must match SQL syntax (e.g., CASE WHEN ..., DATE_PART(...), etc.)
+- Refer to the provided expression_dict to reuse known SQL expressions instead of writing from scratch.
+- Do not use table aliases (e.g., cu, r). Use full column names.
 
-Do not include any explanations outside the schema. Only return the parsed values in the required format.
-
+Return in JSON format.
 {format_instructions}
 """),
     ("human", """
@@ -56,6 +49,9 @@ Question:
 
 Table Descriptions:
 {tables}
+
+If helpful, here is a dictionary mapping variable names to SQL expressions:
+{expression_dict}
 """)
 ]).partial(format_instructions=parse_query_parser.get_format_instructions())
 
@@ -65,54 +61,40 @@ class GeneratedSQL(BaseModel):
 
 sql_query_parser = PydanticOutputParser(pydantic_object=GeneratedSQL)
 
-sql_generation_prompt = ChatPromptTemplate.from_messages([
+sql_generation_prompt_fullgraph = ChatPromptTemplate.from_messages([
     ("system", """
-You are a senior data analyst tasked with generating SQL for causal inference.
+You are a senior data analyst generating a SQL query for causal analysis.
 
-Given:
-- treatment: the variable that was manipulated
-- outcome: the variable that was affected
-- treatment_expression / outcome_expression: SQL expressions representing the variables
-- treatment_expression_description / outcome_expression_description: what these expressions represent
-- main_table: the main data table
-- join_tables: other tables to join with
-- confounders: variables to control for
-- mediators: optional mediating variables
-- instrumental_variables: optional IV variables
+You are given:
+- A list of variable names that appear in the causal graph.
+- A mapping from each variable to its SQL expression.
+- Full schema descriptions.
 
-Use the provided table schemas to write a SQL query that:
-- selects:
-  - the treatment expression as `{treatment}` using `AS`
-  - the outcome expression as `{outcome}` using `AS`
-  - all confounders, mediators, and instrumental variables
-- joins tables correctly (using foreign key relationships)
-- returns a flat, analysis-ready table
+Write a SQL query that:
+- SELECTs each expression using `AS variable_name`
+- Joins all required tables using valid foreign keys
+- Returns a flat, analysis-ready table
 
-### Rules:
-- Use only the tables and columns from the schema
-- Do not repeat treatment or outcome in the confounders list
-- Do not include any explanatory text — only output the SQL query
+## Rules:
+- Do not include explanatory text
+- Use only columns and tables from the schema
+- Do not alias tables (e.g., avoid `FROM users u`)
+- Do not include GROUP BY or ORDER BY unless needed
+- All expressions must be valid SQL syntax (e.g., DATE_PART, COALESCE, CASE WHEN)
 
 {format_instructions}
 """),
     ("human", """
-Treatment: {treatment}
-Treatment Expression: {treatment_expression}
-Treatment Expression Description: {treatment_expression_description}
-Outcome: {outcome}
-Outcome Expression: {outcome_expression}
-Outcome Expression Description: {outcome_expression_description}
-Main Table: {main_table}
-Join Tables: {join_tables}
-Confounders: {confounders}
-Mediators: {mediators}
-Instrumental Variables: {instrumental_variables}
+Variables to Select:
+{selected_variables}
 
-Table Descriptions:
+Expressions:
+{variable_expressions}
+
+Table Schemas:
 {table_schemas}
 """)
 ]).partial(format_instructions=sql_query_parser.get_format_instructions())
-
 
 ### 3. SQL Fix Prompt (on failure)
 
@@ -128,18 +110,22 @@ You are a senior data analyst. Your task is to revise a faulty SQL query based o
 You will be given:
 1. The original SQL query
 2. The error message it triggered
-3. The intended treatment/outcome variable names and SQL expressions
-4. A list of confounders, mediators, and instrumental variables
-5. The main and joined tables
-6. Table schema descriptions
+3. A list of variable names to select and corresponding SQL expressions
+4. Table schemas
 
-Your job is to modify the SQL query to resolve the error while preserving the original intent. Be sure to:
+Your job is to modify the SQL query to resolve the error while preserving the original intent: 
+fetching all listed variables using their SQL expressions.
+
+Be sure to:
 - Correct incorrect column names or aliases
 - Fix joins if necessary
-- Use the correct treatment and outcome expressions with aliases
-- Ensure all required variables (treatment, outcome, confounders, etc.) are selected
-- Join the right tables using valid keys
-- Use only columns and tables from the provided schemas
+- SELECT each expression as `{variable_name}` using `AS`
+- Ensure the result includes all specified variables
+- Use only tables and columns from the provided schema
+- When using aggregate functions (e.g., AVG, COUNT), ensure that all other selected columns are either:
+  - included in the GROUP BY clause, or
+  - wrapped inside an aggregate function
+- CASE WHEN expressions are not aggregate functions and must be included in GROUP BY or aggregated
 
 Return only the fixed SQL query. Do not include explanations or comments.
 
@@ -155,19 +141,11 @@ Error Message:
 ```
 {error_message}
 ```
-Treatment: {treatment}
-Treatment Expression: {treatment_expression}
-Treatment Expression Description: {treatment_expression_description}
+Variables to Select:
+{graph_nodes}
 
-Outcome: {outcome}
-Outcome Expression: {outcome_expression}
-Outcome Expression Description: {outcome_expression_description}
-
-Main Table: {main_table}
-Join Tables: {join_tables}
-Confounders: {confounders}
-Mediators: {mediators}
-Instrumental Variables: {instrumental_variables}
+Variable Expressions:
+{expression_dict}
 
 Table Schemas:
 {table_schemas}
@@ -190,6 +168,7 @@ You are a causal inference expert using the DoWhy library.
 Your job is to choose the appropriate causal inference strategy, estimation method, and optional refutation methods given:
 - A user's causal question
 - Extracted variables (treatment, outcome, confounders)
+    - data type information as `{treatment_type}` and `{outcome_type}`
 - Basic data preview
 
 Only choose from the valid options defined below.
@@ -208,6 +187,9 @@ Identification Strategies:
 - iv: use instrumental variables for exogenous variation
 - mediation: isolate indirect vs direct effects
 - id_algorithm: automated graphical ID algorithm
+
+- If outcome_type is "binary", prefer using backdoor.generalized_linear_model
+- If outcome_type is "continuous", prefer using backdoor.linear_regression
 
 Estimation Methods:
 - backdoor.linear_regression: basic OLS on adjusted data
@@ -240,9 +222,14 @@ Parsed Variables:
 - Treatment: {treatment}
 - Outcome: {outcome}
 - Confounders: {confounders}
+- Mediators: {mediators}
+- Instrumental Variables: {instrumental_variables}
 
 Data Sample:
 {df_sample}
+
+Treatment Type: {treatment_type}
+Outcome Type: {outcome_type}
 """)
 ]).partial(format_instructions=strategy_output_parser.get_format_instructions())
 
@@ -254,24 +241,106 @@ generate_answer_parser = PydanticOutputParser(pydantic_object=CausalResultExplan
 
 generate_answer_prompt = ChatPromptTemplate.from_messages([
     ("system", """
-You are a causal inference expert. Based on the following information, write a short but informative explanation of the causal analysis results. Your explanation should be accessible to data-literate users.
+You are a causal inference expert. Based on the following information, write a clear but informative explanation of the causal analysis results.
 
-- Type of causal task: {task}
-- Estimation method used: {estimator}
-- Estimated causal effect value: {effect_value}
+Causal task metadata:
+- Task type: {task}
+- Estimator used: {estimation_method}
+- Estimated causal effect: {causal_effect_value}
+- 95% confidence interval: {causal_effect_ci}
+- p-value (if available): {causal_effect_p_value}
 - Refutation result (if any): {refutation_result}
-- Label mappings (optional): {label_maps},  Use these to translate coded values (e.g., 0/1) into human-readable labels.
+- Label mappings (optional): {label_maps}
+
+Parsed query details:
+- Treatment variable: {treatment} — {treatment_expression_description}
+- Outcome variable: {outcome} — {outcome_expression_description}
+- Confounders: {confounders}
+- Mediators (if any): {mediators}
+- Instrumental variables (if any): {instrumental_variables}
+- Additional notes: {additional_notes}
+- Main table: {main_table}
+- Join tables: {join_tables}
 
 Your explanation should include:
 1. Interpretation of the estimated effect,
-2. Whether the effect seems statistically or practically significant,
-3. Whether the refutation result supports or weakens confidence in the effect,
-4. Any caveats or assumptions that should be kept in mind.
-5. If label mappings are provided, interpret the effect using human-readable category names
+2. Whether the effect is statistically significant based on p-value or CI,
+3. Whether the refutation result strengthens or weakens confidence in the finding,
+4. Any caveats or assumptions that should be kept in mind,
+5. If label mappings are provided, interpret the effect in human terms.
 
-Use a clear, neutral tone and aim for a short analytical summary (3–6 sentences).
+Respond with a concise analytical summary (3–6 sentences).
 
 {format_instructions}
 """),
     ("human", "")
 ]).partial(format_instructions=generate_answer_parser.get_format_instructions())
+
+
+sql_reconstructor_parser = StrOutputParser()
+sql_reconstruct_prompt = ChatPromptTemplate.from_messages([
+    ("system", """
+ You are a SQL reconstruction assistant. Your task is to generate a **valid and executable SQL query** that evaluates the given expression using correct FROM and JOIN clauses.
+
+### Requirements:
+1. **DO NOT change the expression itself.** Keep it exactly as given.  
+   - Exception: If the expression contains invalid SQL (e.g., nonexistent column/function), you must correct it using the provided table schemas.
+
+2. Use only table and column names that exist in the `table_schemas`.  
+   - If a column contains special characters or spaces (e.g., `Charter School (Y/N)`), wrap it in double quotes: `"Charter School (Y/N)"`.
+
+3. All table references in expressions must be joined in the FROM clause.  
+   - Do not reference a table unless it is included in `main_table` or `join_tables`.
+
+4. If using functions like `YEAR()`, `MONTH()`, etc., verify that they are valid in standard SQL.  
+   - If `YEAR(date_column)` is not valid, rewrite as `EXTRACT(YEAR FROM date_column)`.
+
+5. Do not use columns in SELECT that are not aggregated or grouped.  
+   - If the expression uses subqueries or aggregate functions, and a column is not aggregated, either wrap it in an aggregate or include it in a GROUP BY clause only if needed.
+
+6. If disambiguation is needed due to duplicate column names, prefix with the appropriate table name from the schema.
+
+7. If any table aliases are required, define and use them explicitly and consistently.  
+   - Do not reference undefined aliases (e.g., using "ha" for "hero_attribute" without declaring it).
+
+8. If a column appears in the expression but not in the schema, attempt to infer the correct table.column name based on the schema.  
+   - For example, if `"gender"` is not found, but `"superhero.gender_id"` exists, rewrite accordingly.
+
+### Output Format:
+Return a **minimal SQL query** in the form:
+
+SELECT <expression> AS result
+FROM ...
+JOIN ...
+
+- Do not wrap your output in markdown (no ```sql blocks).
+- Return the SQL query as plain text only.
+Do not include GROUP BY or ORDER BY unless strictly necessary to make the query valid.
+
+Ensure that:
+	•	All table and column names exist in the schema.
+	•	The expression is syntactically valid.
+	•	The result is a single-column query with alias result.
+
+"""),
+    ("human", """
+Given the following inputs, reconstruct the full SQL query wrapping the expression using a correct FROM and JOIN clause:
+
+Expression:
+{expression}
+
+Main Table:
+{main_table}
+
+Join Tables:
+{join_tables}
+
+Original SQL Query:
+{sql_query}
+
+Table Schemas:
+{table_schemas}
+
+Your output must only include the final SQL query.
+""")
+])

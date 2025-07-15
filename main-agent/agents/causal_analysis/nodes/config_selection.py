@@ -1,4 +1,4 @@
-# nodes/strategy_selection.py
+# nodes/config_selection.py
 
 from typing import Dict, Any
 from langchain_core.language_models.chat_models import BaseChatModel
@@ -11,7 +11,7 @@ from prompts.causal_agent_prompts import (
     strategy_output_parser
 )
 
-def build_strategy_selection_node(llm: BaseChatModel):
+def build_config_selection_node(llm: BaseChatModel):
     """
     Selects a causal strategy (task, identification method, estimator, refuter) 
     using an LLM based on user question, variables, and data sample.
@@ -19,19 +19,33 @@ def build_strategy_selection_node(llm: BaseChatModel):
 
     def node(state: Dict) -> Dict:
         df_raw = state["df_raw"]
-        df_sample = df_raw.head(10).to_csv(index=False) if df_raw is not None else ""
-        
         parsed_vars = state["parsed_query"]
-        question = state["input"]
+        question = state.get("input", "No question provided.")
+
+        df_sample = df_raw.head(10).to_csv(index=False) if df_raw is not None else ""
+
+        treatment = parsed_vars.get("treatment")
+        outcome = parsed_vars.get("outcome")
+        confounders = parsed_vars.get("confounders", [])
+        mediators = parsed_vars.get("mediators", [])
+        ivs = parsed_vars.get("instrumental_variables", [])
+
+        # 데이터 타입 판단: binary or continuous
+        unique_outcome_values = df_raw[outcome].dropna().unique()
+        outcome_type = "binary" if len(unique_outcome_values) == 2 else "continuous"
+
+        treatment_type = str(df_raw[treatment].dtype)
 
         prompt_input = {
             "question": question,
-            "treatment": parsed_vars.get("treatment", ""),
-            "outcome": parsed_vars.get("outcome", ""),
-            "confounders": parsed_vars.get("confounders", []),
-            "mediators": parsed_vars.get("mediators", []),
-            "instrumental_variables": parsed_vars.get("instrumental_variables", []),
-            "df_sample": df_sample
+            "treatment": treatment,
+            "outcome": outcome,
+            "confounders": confounders,
+            "mediators": mediators,
+            "instrumental_variables": ivs,
+            "df_sample": df_sample,
+            "treatment_type": treatment_type,
+            "outcome_type": outcome_type
         }
 
         result = call_llm(

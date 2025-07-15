@@ -25,23 +25,23 @@ def build_generate_answer_node(llm: BaseChatModel) -> RunnableLambda:
 
         # LLM 입력 구성
         llm_input = {
+            "task": strategy.task,
+            "estimation_method": strategy.estimator,
             "treatment": parsed_query["treatment"],
-            "treatment_expression": parsed_query["treatment_expression"],
-            "treatment_expression_description": parsed_query["treatment_expression_description"],
+            "treatment_expression_description": parsed_query.get("treatment_expression_description", ""),
             "outcome": parsed_query["outcome"],
-            "outcome_expression": parsed_query["outcome_expression"],
-            "outcome_expression_description": parsed_query["outcome_expression_description"],
-            "main_table": parsed_query["main_table"],
-            "join_tables": parsed_query["join_tables"],
-            "confounders": parsed_query["confounders"],
+            "outcome_expression_description": parsed_query.get("outcome_expression_description", ""),
+            "confounders": parsed_query.get("confounders", []),
             "mediators": parsed_query.get("mediators", []),
             "instrumental_variables": parsed_query.get("instrumental_variables", []),
             "additional_notes": parsed_query.get("additional_notes", ""),
-            "estimator": strategy.estimator,
-            "task": strategy.task,
-            "effect_value": estimate.value,
-            "refutation_result": refutation_result or "No refutation performed",
-            "label_maps": label_maps or {}
+            "main_table": parsed_query.get("main_table", ""),
+            "join_tables": parsed_query.get("join_tables", []),
+            "refutation_result": state.get("refutation_result", "No refutation performed"),
+            "label_maps": state.get("label_maps", {}),
+            "causal_effect_value": state.get("causal_effect_value"),
+            "causal_effect_ci": state.get("causal_effect_ci"),
+            "causal_effect_p_value": state.get("causal_effect_p_value"),
         }
 
         # LLM 호출

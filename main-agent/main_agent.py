@@ -10,11 +10,13 @@ from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
 from langchain_core.runnables import RunnableLambda, RunnableMap
 
 from utils.llm import get_llm
+from utils.load_causal_graph import load_causal_graph
 
 from agents.describle_table import generate_description_graph
 from agents.recommend_table import generate_table_recommendation_graph
 from agents.text2sql import generate_text2sql_graph 
 from agents.causal_analysis import generate_causal_analysis_graph
+from agents.causal_analysis.state import DEFAULT_EXPRESSION_DICT
 
 from prettify import print_final_output_task2, print_final_output_task3, print_final_output_task1, print_final_output_causal
 
@@ -193,8 +195,18 @@ class Agent:
                 return final_output
             
             elif task == "causal_analysis":
-                app = generate_causal_analysis_graph(llm = self.llm)
-                result = app.invoke({"input": content, "db_id": self.db_id})
+                CAUSAL_GRAPH_PATH = "experiments/causal_analysis/causal_graph_daa.json"
+                
+                # 그래프 및 변수 매핑 로드
+                causal_graph = load_causal_graph(CAUSAL_GRAPH_PATH)
+                expression_dict = DEFAULT_EXPRESSION_DICT
+
+                result = app.invoke({
+                    "input": content,
+                    "db_id": self.db_id,
+                    "causal_graph": causal_graph,
+                    "expression_dict": expression_dict
+                })
                 
                 final_output = print_final_output_causal(result)
                 self.memory.chat_memory.add_ai_message(final_output)
