@@ -10,10 +10,12 @@ from .nodes.config_selection import build_config_selection_node
 from .nodes.dowhy_analysis import build_dowhy_analysis_node
 from .nodes.generate_answer import build_generate_answer_node
 
-
 def generate_causal_analysis_graph(llm):
     graph = StateGraph(CausalAnalysisState)
 
+    # Add entry node for conditional routing
+    graph.add_node("__entry__", lambda state: state)
+    
     # Add nodes
     graph.add_node("parse_question", build_parse_question_node(llm))
     graph.add_node("generate_sql_query", build_generate_sql_query_node(llm))
@@ -23,9 +25,16 @@ def generate_causal_analysis_graph(llm):
     graph.add_node("dowhy_analysis", build_dowhy_analysis_node())
     graph.add_node("generate_answer", build_generate_answer_node(llm))
 
-    # Define edges
-    graph.set_entry_point("parse_question")
-    graph.add_edge("parse_question", "generate_sql_query")
+    # Conditional branching from parse_question
+    def route_entry(state):
+        if state["sql_query"]:
+            return "fetch_data"
+        else:
+            return "parse_question"
+
+    graph.set_entry_point("__entry__")
+    graph.add_conditional_edges("__entry__", route_entry)
+
     graph.add_edge("generate_sql_query", "fetch_data")
     graph.add_edge("fetch_data", "preprocess")
     graph.add_edge("preprocess", "config_selection")

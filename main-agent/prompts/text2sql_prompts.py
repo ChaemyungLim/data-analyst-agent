@@ -248,7 +248,7 @@ Decompose the question into sub questions, considering 【Constraints】, and ge
 refiner_template = """
 【Instruction】
 When executing SQL below, some errors occurred, please fix up SQL based on query and database info.
-Solve the task step by step if you need to. Using SQL format in the code block, and indicate script type in the code block.
+Solve the task step by step if you need to.
 When you find an answer, verify the answer carefully. Include verifiable evidence in your response if possible.
 
 【Constraints】
@@ -275,15 +275,14 @@ When you find an answer, verify the answer carefully. Include verifiable evidenc
 【Exception class】
 {exception_class}
 
-Now please fixup old SQL and generate new SQL again. Only output the new SQL in the code block, and indicate script type in the code block.
+Now please fixup old SQL and generate new SQL again. Only output the new SQL in the code block, and indicate script type by ```sql ```in the code block.
 【correct SQL】
 """
 
 refiner_feedback_template = """
-
 【Instruction】
 When executing SQL below, no rows were returned. please fix up SQL based on query, database info, and feedback on the old SQL.
-Solve the task step by step if you need to. Using SQL format in the code block, and indicate script type in the code block.
+Solve the task step by step if you need to.
 When you find an answer, verify the answer carefully. Include verifiable evidence in your response if possible.
 
 【Constraints】
@@ -308,7 +307,7 @@ When you find an answer, verify the answer carefully. Include verifiable evidenc
 {sql}
 ```
 
-Now please fixup old SQL and generate new SQL again. Only output the new SQL in the code block, and indicate script type in the code block.
+Now please fixup old SQL and generate new SQL again. Only output the new SQL in the code block, and indicate script type by ```sql ```in the code block.
 【correct SQL】
 """
 
@@ -355,7 +354,8 @@ Now analyze the following SQL and answer using the same format. Use the shema in
 
 User Question: {query}
 SQL: {sql}
-shema info: {desc_str}
+schema info: {desc_str}
+evidence: {evidence}
 
 Output Format:
 Yes.

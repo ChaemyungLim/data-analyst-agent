@@ -3,6 +3,8 @@ from pydantic import BaseModel, Field
 from langchain.output_parsers import PydanticOutputParser
 from langchain_core.prompts import ChatPromptTemplate, SystemMessagePromptTemplate, HumanMessagePromptTemplate
 
+
+# column description prompt and parser 
 class ColumnDescription(BaseModel):
     column_name: str
     data_type: str
@@ -15,7 +17,7 @@ class TableAnalysis(BaseModel):
     columns: List[ColumnDescription]
     analysis_considerations: str
 
-parser = PydanticOutputParser(pydantic_object=TableAnalysis)
+column_description_parser = PydanticOutputParser(pydantic_object=TableAnalysis)
 
 system_template = """You are a professional data analyst specialized in database documentation and exploratory data analysis (EDA).
 
@@ -37,9 +39,8 @@ Your task is to provide a structured JSON analysis consisting of the following f
         - Low variance or uniformity (e.g., "All values are 'true'")
         - Range coverage (e.g., "Date range from 1970-01-10 to 2005-12-01")
         - Median, min/max (e.g., "Median birth date is 1988-05-18")
-        - low variance, skewness, duplicates; Uniform or skewed distribution
-        - Outliers or suspicious values, other range issues
-        - Potential business usage (e.g., filtering, grouping, personalization)
+        - Potential outliers or suspicious values, other range issues
+        - Low variance, skewness, duplicates; Uniform or skewed distribution based on median, mean, min/max for numerical columns, and top value counts for categorical columns.
     
       Notes must:
       - Provide meaningful insights from a data analysis perspective (e.g., likelihood of being an identifier, presence of outliers, skewed distributions, repeated values, narrow/wide range issues).
@@ -51,6 +52,7 @@ Your task is to provide a structured JSON analysis consisting of the following f
 3. analysis_considerations: (string)
     - Summarize any critical risks, biases, or opportunities associated with this table.
     - Mention how the quality of this table may affect downstream analysis.
+    - Mention any prepocessing or transformations that may be needed.
 
 4. related_tables: (list of objects)
     - table: str
@@ -89,11 +91,58 @@ human_template = """
 {column_summary}
 """
 
-prompt = ChatPromptTemplate(
+column_description_prompt = ChatPromptTemplate(
     messages=[
         SystemMessagePromptTemplate.from_template(system_template),
         HumanMessagePromptTemplate.from_template(human_template)
     ],
     input_variables=["table_name", "column_summary"],
-    partial_variables={"format_instructions": parser.get_format_instructions()}
+    partial_variables={"format_instructions": column_description_parser.get_format_instructions()}
+)
+
+
+# Usecase recommendation prompt and parser
+class Usecase(BaseModel):
+    analysis_topic: str = Field(..., alias="Analysis Topic")
+    suggested_methodology: str = Field(..., alias="Suggested Methodology")
+    expected_insights: str = Field(..., alias="Expected Insights")
+
+class RecommendedUsecases(BaseModel):
+    usecases: list[Usecase] = Field(..., alias="Usecases")
+    class Config:
+        populate_by_name = True  # alias로도 값을 받을 수 있게 허용
+
+usecase_parser = PydanticOutputParser(pydantic_object=RecommendedUsecases)
+
+system_template = """
+You are a business data analyst.
+
+Your job is to generate up to 3 specific, concrete analysis Usecases based on:
+- A table description
+- Related tables information
+
+For each idea, include:
+- Analysis Topic: (what specific relationship or pattern you propose to study)
+- Suggested Methodology: (what kind of statistical analysis, aggregation, segmentation, or modeling would be appropriate)
+- Expected Insights: (what kind of business value or decision-making this analysis could support)
+
+Respond in a numbered list. Avoid vague suggestions.
+{format_instructions}
+"""
+
+human_template = """
+[Table Description]
+{table_description}
+
+[Related Tables]
+{related_tables}
+"""
+
+usecase_prompt = ChatPromptTemplate(
+    messages=[
+        SystemMessagePromptTemplate.from_template(system_template),
+        HumanMessagePromptTemplate.from_template(human_template)
+    ],
+    input_variables=["table_description", "related_tables"],
+    partial_variables={"format_instructions": usecase_parser.get_format_instructions()}
 )

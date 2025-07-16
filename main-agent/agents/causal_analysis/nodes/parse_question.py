@@ -12,10 +12,9 @@ from langchain_core.language_models.chat_models import BaseChatModel
 
 from utils.redis_client import redis_client
 
-
 def build_parse_question_node(llm: BaseChatModel) -> Callable:
     def _parse_question(state: Dict) -> Dict:
-        if state.get("variable_info"): # Case 1: variable_info is already provided
+        if state["variable_info"]: # Case 1: variable_info is already provided
             state["parsed_query"] = state["variable_info"]
             return state
 
@@ -58,7 +57,7 @@ def build_parse_question_node(llm: BaseChatModel) -> Callable:
                 variables={
                     "question": question,
                     "tables": full_markdown + fix_note,
-                    "expression_dict": json.dumps(state.get("expression_dict", {})) 
+                    "expression_dict": json.dumps(state["expression_dict"]) 
                 },
                 llm=llm
             )

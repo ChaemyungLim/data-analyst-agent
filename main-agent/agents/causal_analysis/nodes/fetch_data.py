@@ -10,8 +10,17 @@ from langchain_core.language_models.chat_models import BaseChatModel
 
 database = Database()
 
+def prepare_state(state: dict) -> dict:
+    # variable_info가 있다면 parsed_query에 복사
+    if state["variable_info"]:
+        state["parsed_query"] = state["variable_info"]
+    return state
+
 def build_fetch_data_node(llm: BaseChatModel):
     def node(state: Dict) -> Dict:
+        if "parsed_query" not in state:
+            state = prepare_state(state)
+        
         sql_query = state["sql_query"]
         schema_str = state["table_schema_str"]
 
@@ -24,7 +33,7 @@ def build_fetch_data_node(llm: BaseChatModel):
 
 
         graph_nodes = state["causal_graph"]["nodes"]
-        expression_dict = state.get("expression_dict", {})
+        expression_dict = state["expression_dict"]
         expected_columns_base = [v.split(".")[-1] for v in graph_nodes]        
         
         expected_columns_base = [var.split('.')[-1] for var in graph_nodes]

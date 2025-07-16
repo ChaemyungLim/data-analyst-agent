@@ -1,6 +1,6 @@
 # nodes/config_selection.py
 
-from typing import Dict, Any
+from typing import Dict, List
 from langchain_core.language_models.chat_models import BaseChatModel
 
 from agents.causal_analysis.state import Strategy
@@ -11,6 +11,9 @@ from prompts.causal_agent_prompts import (
     strategy_output_parser
 )
 
+def clean_var_names(vars: List[str]) -> List[str]:
+    return [v.split(".")[-1] if isinstance(v, str) and "." in v else v for v in vars]
+
 def build_config_selection_node(llm: BaseChatModel):
     """
     Selects a causal strategy (task, identification method, estimator, refuter) 
@@ -20,15 +23,16 @@ def build_config_selection_node(llm: BaseChatModel):
     def node(state: Dict) -> Dict:
         df_raw = state["df_raw"]
         parsed_vars = state["parsed_query"]
-        question = state.get("input", "No question provided.")
+        question = state["input"]
 
         df_sample = df_raw.head(10).to_csv(index=False) if df_raw is not None else ""
 
-        treatment = parsed_vars.get("treatment")
-        outcome = parsed_vars.get("outcome")
-        confounders = parsed_vars.get("confounders", [])
-        mediators = parsed_vars.get("mediators", [])
-        ivs = parsed_vars.get("instrumental_variables", [])
+        # Extract variables
+        treatment = clean_var_names([parsed_vars.get("treatment")])[0]
+        outcome = clean_var_names([parsed_vars.get("outcome")])[0]
+        confounders = clean_var_names(parsed_vars.get("confounders", []))
+        mediators = clean_var_names(parsed_vars.get("mediators", []))
+        ivs = clean_var_names(parsed_vars.get("instrumental_variables", []))
 
         # 데이터 타입 판단: binary or continuous
         unique_outcome_values = df_raw[outcome].dropna().unique()

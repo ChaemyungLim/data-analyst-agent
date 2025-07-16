@@ -32,10 +32,9 @@ def build_generate_sql_query_node(llm: BaseChatModel):
         sql_query = generate_valid_sql(
             llm=llm,
             graph_nodes=graph_nodes,
-            expression_dict=state.get("expression_dict", {}),
+            expression_dict=state["expression_dict"],
             schema_str=schema_str
         )
         
-        state["sql_query"] = sql_query
         return state
     return node

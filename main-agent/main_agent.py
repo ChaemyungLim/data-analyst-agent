@@ -195,12 +195,15 @@ class Agent:
                 return final_output
             
             elif task == "causal_analysis":
-                CAUSAL_GRAPH_PATH = "experiments/causal_analysis/causal_graph_daa.json"
+                CAUSAL_GRAPH_PATH = "experiments/causal_analysis/causal_graph_full.json"
                 
                 # 그래프 및 변수 매핑 로드
                 causal_graph = load_causal_graph(CAUSAL_GRAPH_PATH)
                 expression_dict = DEFAULT_EXPRESSION_DICT
 
+                app = generate_causal_analysis_graph(
+                    llm=self.llm)
+                
                 result = app.invoke({
                     "input": content,
                     "db_id": self.db_id,

@@ -37,11 +37,11 @@ def build_generate_answer_node(llm: BaseChatModel) -> RunnableLambda:
             "additional_notes": parsed_query.get("additional_notes", ""),
             "main_table": parsed_query.get("main_table", ""),
             "join_tables": parsed_query.get("join_tables", []),
-            "refutation_result": state.get("refutation_result", "No refutation performed"),
-            "label_maps": state.get("label_maps", {}),
-            "causal_effect_value": state.get("causal_effect_value"),
-            "causal_effect_ci": state.get("causal_effect_ci"),
-            "causal_effect_p_value": state.get("causal_effect_p_value"),
+            "refutation_result": refutation_result if refutation_result else None,
+            "label_maps": label_maps if label_maps else None,
+            "causal_effect_value": state["causal_effect_value"],
+            "causal_effect_ci": state["causal_effect_ci"],
+            "causal_effect_p_value": state["causal_effect_p_value"],
         }
 
         # LLM 호출

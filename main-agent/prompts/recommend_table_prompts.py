@@ -4,6 +4,40 @@ from langchain.output_parsers import PydanticOutputParser
 from langchain_core.prompts import ChatPromptTemplate, SystemMessagePromptTemplate, HumanMessagePromptTemplate
 
 
+# objective summary prompt and parser
+class ObjectiveSummary(BaseModel):
+    summerized_objective: str = Field(..., description="Core analysis objective")
+    required_data: str = Field(..., description="Data or information needed for the analysis")
+
+objective_summary_parser = PydanticOutputParser(pydantic_object=ObjectiveSummary)
+
+# 프롬프트 템플릿
+system_template = """
+You will be given texts that is part of a business data analysis plan.
+
+Please summarize:
+- The core objective of the analysis
+- What data (or tables) are likely needed to achieve it
+
+Output the summary in JSON format in the following structure:
+{format_instructions}
+"""
+
+human_template = """Text:
+{analysis_text}
+"""
+
+objective_summary_prompt = ChatPromptTemplate(
+    messages=[
+        SystemMessagePromptTemplate.from_template(system_template),
+        HumanMessagePromptTemplate.from_template(human_template)
+    ],
+    input_variables=["analysis_text"],
+    partial_variables={"format_instructions": objective_summary_parser.get_format_instructions()}
+)
+
+
+# table recommendation prompt and parser
 class TableRecommendation(BaseModel):
     table: str = Field(..., description="The table name")
     important_columns: List[str] = Field(..., description="List of important columns to focus on in this table")
@@ -12,7 +46,7 @@ class RecommendedTables(BaseModel):
     recommended_tables: List[TableRecommendation] = Field(..., description="List of recommended tables with key columns")
     analysis_method: str = Field(..., description="Step-by-step explanation of how to perform the analysis")
     
-parser = PydanticOutputParser(pydantic_object=RecommendedTables)
+table_rec_parser = PydanticOutputParser(pydantic_object=RecommendedTables)
 
 
 example = """
@@ -41,11 +75,11 @@ Available Tables and descriptions:
 {tables}
 """
 
-prompt = ChatPromptTemplate(
+table_rec_prompt = ChatPromptTemplate(
     messages=[
         SystemMessagePromptTemplate.from_template(system_template),
         HumanMessagePromptTemplate.from_template(human_template)
     ],
     input_variables=["objective", "tables"],
-    partial_variables={"format_instructions": parser.get_format_instructions()}
+    partial_variables={"format_instructions": table_rec_parser.get_format_instructions()}
 )

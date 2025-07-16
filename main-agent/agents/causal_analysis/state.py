@@ -1,26 +1,39 @@
 # agents/causal_analysis/state.py
 
-from typing import Optional, Dict, Any
+from typing import Optional, Dict, Any, List
 from pydantic import BaseModel, ConfigDict
 import pandas as pd
 from dowhy import CausalModel
 from dowhy.causal_estimator import CausalEstimate
 
 DEFAULT_EXPRESSION_DICT = {
-    "signup_days_ago": "DATE_PART('day', CURRENT_DATE - u.created_at)",
-    "is_active": "u.is_active",
-    "age": "DATE_PART('year', AGE(u.birth))",
-    "used_coupon": "COALESCE(uc.used_coupon, FALSE)",
-    "gender": "u.gender",
-    "unit_price": "p.unit_price",
-    "order_total": "p.order_total",
-    "quantity": "p.quantity",
-    "paid_amount": "p.paid_amount",
-    "discount_amount": "c.discount_amount",
-    "discount_rate": "c.discount_rate",
-    "point_earned": "p.paid_amount * 0.01",
-    "point_balance": "u.point_balance",
-    "review_score": "r.score"
+    # ─── Users & basic demographics ────────────────────────────────────────────
+    "signup_days_ago": "DATE_PART('day', CURRENT_DATE - users.created_at)",
+    "is_active":        "users.is_active",
+    "age":              "DATE_PART('year', AGE(users.birth))",
+    "gender":           "users.gender",
+    "point_balance":    "users.point_balance",
+
+    # ─── Order-level amounts & quantities ──────────────────────────────────────
+    "unit_price":   "order_items.unit_price",
+    "quantity":     "order_items.quantity",
+    "order_total":  "order_items.total_price",        # generated column
+    "paid_amount":  "(orders.total_amount - orders.discount_amount)",
+
+    # ─── Coupon effects (requires coupon join, see notes) ──────────────────────
+    "discount_amount": "coupon.discount_amount",
+    "discount_rate":   "coupon.discount_rate",
+    "used_coupon":
+        "COALESCE((SELECT TRUE "
+        "           FROM coupon_usage "
+        "           WHERE coupon_usage.order_id = orders.order_id "
+        "           LIMIT 1), FALSE)",
+
+    # ─── Loyalty points (1 % of amount actually paid) ─────────────────────────
+    "point_earned": "((orders.total_amount - orders.discount_amount) * 0.01)",
+
+    # ─── Reviews ───────────────────────────────────────────────────────────────
+    "review_score": "review.score"
 }
 
 class Strategy(BaseModel):
@@ -30,6 +43,7 @@ class Strategy(BaseModel):
     refuter: Optional[str] = None
 
 class CausalAnalysisState(BaseModel):
+    messages: Optional[List] = []  # 대화 메시지 기록
     model_config = ConfigDict(arbitrary_types_allowed=True)
         
     input: Optional[str] = None  # 사용자 질의

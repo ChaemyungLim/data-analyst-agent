@@ -61,13 +61,16 @@ class GeneratedSQL(BaseModel):
 
 sql_query_parser = PydanticOutputParser(pydantic_object=GeneratedSQL)
 
-sql_generation_prompt_fullgraph = ChatPromptTemplate.from_messages([
+sql_generation_prompt = ChatPromptTemplate.from_messages([
     ("system", """
 You are a senior data analyst generating a SQL query for causal analysis.
 
 You are given:
 - A list of variable names that appear in the causal graph.
 - A mapping from each variable to its SQL expression.
+   - ⚠️ These expressions may include unsafe patterns such as correlated subqueries.
+        Do not blindly copy them into the SELECT clause.
+        Instead, transform them into JOIN-based expressions if they rely on values from other tables.
 - Full schema descriptions.
 
 Write a SQL query that:
@@ -81,6 +84,10 @@ Write a SQL query that:
 - Do not alias tables (e.g., avoid `FROM users u`)
 - Do not include GROUP BY or ORDER BY unless needed
 - All expressions must be valid SQL syntax (e.g., DATE_PART, COALESCE, CASE WHEN)
+
+- NEVER write expressions like `(SELECT ... WHERE ... = outer_column LIMIT 1)`, as they will result in 'correlated subquery' errors in PostgreSQL.
+- For Boolean flags based on lookup tables (e.g., "used_coupon" from "coupon_usage"), precompute them via LEFT JOIN subqueries using DISTINCT or GROUP BY, and assign the Boolean directly (e.g., TRUE AS used_coupon).
+- All SELECT expressions must refer to columns or aliases available in the FROM/JOIN scope.
 
 {format_instructions}
 """),
@@ -119,7 +126,7 @@ fetching all listed variables using their SQL expressions.
 Be sure to:
 - Correct incorrect column names or aliases
 - Fix joins if necessary
-- SELECT each expression as `{variable_name}` using `AS`
+- SELECT each expression as the `variable_name` using `AS`
 - Ensure the result includes all specified variables
 - Use only tables and columns from the provided schema
 - When using aggregate functions (e.g., AVG, COUNT), ensure that all other selected columns are either:
@@ -127,7 +134,9 @@ Be sure to:
   - wrapped inside an aggregate function
 - CASE WHEN expressions are not aggregate functions and must be included in GROUP BY or aggregated
 
-Return only the fixed SQL query. Do not include explanations or comments.
+- NEVER write expressions like `(SELECT ... WHERE ... = outer_column LIMIT 1)`, as they will result in 'correlated subquery' errors in PostgreSQL.
+- For Boolean flags based on lookup tables (e.g., "used_coupon" from "coupon_usage"), precompute them via LEFT JOIN subqueries using DISTINCT or GROUP BY, and assign the Boolean directly (e.g., TRUE AS used_coupon).
+- All SELECT expressions must refer to columns or aliases available in the FROM/JOIN scope.
 
 {format_instructions}
 """),
